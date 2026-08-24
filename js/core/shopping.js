@@ -180,7 +180,7 @@
 
   window.App = window.App || {};
   window.App.shopping = {
-    aggregate, buildList, costOf, pantryAfter, buyMult,
+    aggregate, buildList, costOf, pantryAfter, buyMult, weighStep, roundUp,
     formatAmount, formatMass, formatPurchase, groupByCategory
   };
 })();

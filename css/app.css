@@ -435,6 +435,21 @@ html, body {
 .person-result { display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: 13px; color: var(--accent); font-weight: 550; }
 .person-formula { color: var(--ink-soft); font-weight: 400; font-size: 12px; line-height: 1.45; }
 
+.person-meals { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.person-meals .field-label { flex: 0 0 auto; }
+
+.slot-summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.slot-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--surface-2);
+  border-radius: 9px;
+  padding: 7px 11px;
+}
+.slot-chip-name { font-size: 13px; font-weight: 600; }
+.slot-chip-meta { font-size: 11px; color: var(--ink-soft); }
+
 .regulars { display: flex; flex-direction: column; gap: 6px; }
 .regular-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .regular-row .input { width: auto; flex: 0 1 auto; }

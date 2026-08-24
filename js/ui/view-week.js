@@ -126,7 +126,8 @@
       .filter(r => r.m.indexOf(meal.slot) !== -1 && r.id !== meal.recipe.id)
       .map(function (r) {
         const nut = N().recipeNutrition(r, byId);
-        const mult = plan.targets.daily.kcal * plan.shares[meal.slot] / Math.max(1, nut.total.kcal);
+        const slotTarget = P().targetsOf(plan)[meal.slot] || { kcal: 0 };
+        const mult = slotTarget.kcal / Math.max(1, nut.total.kcal);
         return { r: r, nut: nut, mult: mult, cost: P().recipeCost(r, byId, mult) };
       })
       .sort((a, b) => a.cost - b.cost);

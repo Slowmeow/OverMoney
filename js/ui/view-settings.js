@@ -111,6 +111,28 @@
           Object.keys(N().GOALS).map(k => ({ value: k, label: N().GOALS[k].n })),
           person.goal, v => upd('goal', v)))
       ]),
+      h('div.person-meals', {}, [
+        h('span.field-label', { text: 'Ест' }),
+        h('div.checkgroup', {}, Object.keys(window.App.MEALS).map(function (key) {
+          const on = (person.meals || []).indexOf(key) !== -1;
+          return h('label.checkline', {}, [
+            h('input', {
+              type: 'checkbox', checked: on,
+              onchange: function (e) {
+                const list = (person.meals || []).slice();
+                if (e.target.checked) list.push(key);
+                person.meals = e.target.checked ? list : list.filter(m => m !== key);
+                // Совсем без приёмов пищи человек остаться не может —
+                // иначе его норма просто исчезнет из расчёта.
+                if (!person.meals.length) person.meals = [key];
+                S().save();
+                window.App.ui.refresh();
+              }
+            }),
+            h('span', { text: window.App.MEALS[key].n })
+          ]);
+        }))
+      ]),
       h('label.checkline', {}, [
         h('input', {
           type: 'checkbox', checked: manual,
@@ -143,23 +165,16 @@
     const s = S().get().settings;
     const meals = window.App.MEALS;
 
+    const targets = window.App.planner.slotTargets(S().get().people);
+
     return u.card('Режим питания', [
-      h('p.hint', { text: 'Снятая галочка убирает приём пищи из плана, но не уменьшает дневную норму: ' +
-        'калории просто распределяются по оставшимся приёмам. Чтобы есть меньше, меняйте цель в профиле, ' +
-        'а не число приёмов пищи.' }),
-      h('div.checkgroup', {}, Object.keys(meals).map(function (key) {
-        const active = s.mealsActive.indexOf(key) !== -1;
-        return h('label.checkline', {}, [
-          h('input', {
-            type: 'checkbox', checked: active,
-            onchange: function (e) {
-              if (e.target.checked) s.mealsActive.push(key);
-              else s.mealsActive = s.mealsActive.filter(m => m !== key);
-              S().save();
-              window.App.ui.refresh();
-            }
-          }),
-          h('span', { text: meals[key].n })
+      h('p.hint', { text: 'Приёмы пищи задаются отдельно для каждого человека в блоке «Кто ест». ' +
+        'Блюдо готовится одно, а порция считается по тем, кто в этом приёме участвует.' }),
+      h('div.slot-summary', {}, Object.keys(meals).filter(k => targets[k]).map(function (key) {
+        const t = targets[key];
+        return h('div.slot-chip', {}, [
+          h('span.slot-chip-name', { text: meals[key].n }),
+          h('span.slot-chip-meta', { text: t.kcal + ' ккал · ' + t.eaters.join(', ') })
         ]);
       })),
       h('div.form-grid', {}, [

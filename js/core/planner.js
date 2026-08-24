@@ -72,6 +72,72 @@
     }, 0);
   }
 
+  /* Сколько на самом деле стоит добавить это блюдо в план.
+   *
+   * Наивный подсчёт «граммы × цена за грамм» врёт вдвое: продукты продаются
+   * упаковками, и если ради одного рецепта пришлось купить пачку риса 800 г,
+   * а ушло 300 г, то следующее блюдо с рисом обойдётся бесплатно — оставшиеся
+   * 500 г уже оплачены. Именно на этой разнице в тестах терялось от четверти
+   * до половины недельного бюджета: план набирал три десятка разных продуктов,
+   * каждый целой упаковкой, и почти всё оставалось недоеденным.
+   *
+   * Поэтому цена считается по остатку: сначала кладовая, потом уже оплаченные
+   * хвосты упаковок, и только недостающее — новыми пачками.
+   */
+  function marginalCost(recipe, byId, ctx, mult) {
+    let cost = 0;
+    recipe.ing.forEach(function (i) {
+      const product = byId[i.p];
+      if (!product) return;
+
+      let need = i.g * mult;
+      need -= Math.min(need, ctx.pantry[i.p] || 0);
+
+      const committed = ctx.committed[i.p];
+      if (committed) need -= Math.min(need, Math.max(0, committed.bought - committed.used));
+      if (need <= 0.5) return;
+
+      if (product.w) {
+        const step = SH().weighStep(product);
+        cost += SH().roundUp(need, step) * S().pricePerBase(product);
+      } else {
+        cost += Math.ceil(need / product.pack) * product.pr;
+      }
+    });
+    return cost;
+  }
+
+  /* Запоминаем, что уже куплено и сколько из этого израсходовано, — чтобы
+     следующее блюдо видело оплаченные остатки. */
+  function commitRecipe(recipe, byId, ctx, mult) {
+    recipe.ing.forEach(function (i) {
+      const product = byId[i.p];
+      if (!product) return;
+
+      let need = i.g * mult;
+      const fromPantry = Math.min(need, ctx.pantry[i.p] || 0);
+      if (fromPantry > 0) {
+        ctx.pantry[i.p] -= fromPantry;
+        if (ctx.pantry[i.p] < 1) delete ctx.pantry[i.p];
+        need -= fromPantry;
+      }
+      if (need <= 0.5) return;
+
+      const c = ctx.committed[i.p] || (ctx.committed[i.p] = { bought: 0, used: 0 });
+      const free = Math.max(0, c.bought - c.used);
+      const fromFree = Math.min(need, free);
+      c.used += fromFree;
+      need -= fromFree;
+      if (need <= 0.5) return;
+
+      const extra = product.w
+        ? SH().roundUp(need, SH().weighStep(product))
+        : Math.ceil(need / product.pack) * product.pack;
+      c.bought += extra;
+      c.used += need;
+    });
+  }
+
   /* Часть стоимости рецепта, которую можно покрыть из кладовой.
      Именно это заставляет приложение «доедать» то, что уже куплено. */
   function pantryCover(recipe, byId, pantry, mult) {
@@ -88,6 +154,14 @@
     return totalCost > 0 ? covered / totalCost : 0;
   }
 
+  /* Во сколько раз рецепт придётся масштабировать под этот приём пищи.
+     Нужна до общего пересчёта порций, чтобы правильно оценить закупку. */
+  function estimateMult(recipe, byId, ctx, slot) {
+    const nut = N().recipeNutrition(recipe, byId);
+    const target = (ctx.slotTargets[slot] || { kcal: 600 }).kcal;
+    return Math.max(0.35, Math.min(3.0, target / Math.max(1, nut.total.kcal)));
+  }
+
   function consumePantry(pantry, recipe, mult) {
     recipe.ing.forEach(function (i) {
       const need = i.g * mult;
@@ -99,14 +173,48 @@
 
   // ---------------------------------------------------------------- нормы
 
-  /* Доли приёмов пищи, пересчитанные на включённые пользователем слоты. */
-  function mealShares(settings) {
+  /* Доли приёмов пищи одного человека, пересчитанные на его набор.
+     Если он не завтракает, завтраковые калории расходятся по остальным
+     приёмам, а не пропадают: суточная норма от этого не уменьшается. */
+  function personShares(person) {
     const meals = window.App.MEALS;
-    const active = settings.mealsActive.filter(m => meals[m]);
+    const active = (person.meals || []).filter(m => meals[m]);
     const sum = active.reduce((s, m) => s + meals[m].share, 0) || 1;
     const out = {};
     active.forEach(m => { out[m] = meals[m].share / sum; });
     return out;
+  }
+
+  /* Цель каждого приёма пищи в абсолютных величинах: складываем доли только
+     тех, кто в этом приёме участвует. Поэтому если перекус нужен одному
+     из двоих, порция считается на одного, а не на двоих. */
+  function slotTargets(people) {
+    const out = {};
+    people.forEach(function (person) {
+      const t = N().personTargets(person);
+      const shares = personShares(person);
+      Object.keys(shares).forEach(function (slot) {
+        const bucket = out[slot] || (out[slot] = { kcal: 0, p: 0, f: 0, c: 0, eaters: [] });
+        bucket.kcal += t.kcal * shares[slot];
+        bucket.p += t.p * shares[slot];
+        bucket.f += t.f * shares[slot];
+        bucket.c += t.c * shares[slot];
+        bucket.eaters.push(person.name);
+      });
+    });
+    Object.keys(out).forEach(function (slot) {
+      out[slot].kcal = Math.round(out[slot].kcal);
+      out[slot].p = Math.round(out[slot].p);
+      out[slot].f = Math.round(out[slot].f);
+      out[slot].c = Math.round(out[slot].c);
+    });
+    return out;
+  }
+
+  /* Планы, собранные до появления персональных приёмов пищи, поля не имеют —
+     считаем его на лету, чтобы старый план не пришлось выбрасывать. */
+  function targetsOf(plan) {
+    return plan.slotTargets || slotTargets(S().get().people);
   }
 
   // ---------------------------------------------------------------- сборка
@@ -132,24 +240,30 @@
     }
     if (!candidates.length) return null;
 
-    const costs = candidates.map(r => {
+    // Считаем цену за килокалорию по остатку упаковок: блюдо из продуктов,
+    // которые в списке уже есть, обходится почти даром.
+    const slotKcal = (ctx.slotTargets[slot] || { kcal: 600 }).kcal;
+    const costs = candidates.map(function (r) {
       const nut = N().recipeNutrition(r, byId);
       const kcal = nut.total.kcal || 1;
-      return recipeCost(r, byId, 1) / kcal;
+      const mult = Math.max(0.35, Math.min(3.0, slotKcal / kcal));
+      return marginalCost(r, byId, ctx, mult) / (kcal * mult);
     });
     const medianCost = costs.slice().sort((a, b) => a - b)[Math.floor(costs.length / 2)] || 1;
 
     const scored = candidates.map(function (r, idx) {
       let score = 0;
-      score += pantryCover(r, byId, pantry, 1) * 3.0;      // главный приоритет — доесть своё
-      score -= (costs[idx] / medianCost) * 1.0;            // дешевле — лучше
+      score += pantryCover(r, byId, pantry, 1) * 1.5;      // доесть скоропорт из кладовой
+      // Вес 5 выбран замером: перебор значений от 2,5 до 10 на восьми прогонах
+      // дал здесь лучшую среднюю стоимость недели при сохранении разнообразия.
+      score -= (costs[idx] / (medianCost || 1)) * 5.0;     // дешевле по остатку — решающий фактор
       score -= (usage[r.id] || 0) * 1.5;                   // не приедаться
       if (r.t > 50) score -= 0.4;                          // долгие рецепты реже
       if (ctx.proteinDeficit) {
         const nut = N().recipeNutrition(r, byId);
         score += Math.min(1.2, nut.total.p / Math.max(1, nut.total.kcal) * 60);
       }
-      score += Math.random() * 0.6;                        // чтобы неделя не повторялась дословно
+      score += Math.random() * 0.4;                        // чтобы неделя не повторялась дословно
       return { r: r, score: score };
     });
 
@@ -167,14 +281,13 @@
   /* Пересчёт порций: каждое блюдо масштабируется так, чтобы попасть
      в калорийную долю своего приёма пищи. Вызывается после любой правки плана. */
   function rebalance(plan, byId) {
-    const shares = plan.shares;
-    const dailyKcal = plan.targets.daily.kcal;
+    const targets = targetsOf(plan);
 
     plan.days.forEach(function (day) {
       day.meals.forEach(function (meal) {
         if (!meal.recipe) return;
         const nut = N().recipeNutrition(meal.recipe, byId);
-        const targetKcal = dailyKcal * (shares[meal.slot] || 0);
+        const targetKcal = (targets[meal.slot] || { kcal: 0 }).kcal;
         const total = nut.total.kcal || 1;
         let mult = targetKcal / total;
         mult = Math.max(0.35, Math.min(3.0, mult));
@@ -229,8 +342,9 @@
 
   function buildSkeleton(settings, people) {
     const daily = N().householdTargets(people);
-    const shares = mealShares(settings);
-    const slots = Object.keys(shares);
+    const targets = slotTargets(people);
+    // Порядок приёмов пищи — как в течение дня, а не как пришлось в объекте.
+    const slots = Object.keys(window.App.MEALS).filter(s => targets[s]);
     const start = new Date((settings.startDay || S().today()) + 'T00:00:00');
 
     const days = [];
@@ -245,7 +359,7 @@
 
     return {
       createdAt: new Date().toISOString(),
-      shares: shares,
+      slotTargets: targets,
       slots: slots,
       targets: {
         daily: daily,
@@ -266,6 +380,8 @@
       byId: S().productsById(),
       recipes: S().recipes(),
       pantry: Object.assign({}, state.pantry),
+      committed: {},                       // что уже оплачено упаковками и сколько из этого съедено
+      slotTargets: slotTargets(state.people),
       usage: {},
       lastBySlot: {},
       settings: state.settings,
@@ -285,6 +401,7 @@
         meal.recipe = clone(recipe);
         meal.leftoverOf = null;
         ctx.usage[recipe.id] = (ctx.usage[recipe.id] || 0) + 1;
+        commitRecipe(recipe, byId, ctx, estimateMult(recipe, byId, ctx, meal.slot));
         filled++;
       });
     });
@@ -308,10 +425,11 @@
         const recipe = pickRecipe(meal.slot, ctx);
         if (!recipe) return;
 
+        const mult = estimateMult(recipe, byId, ctx, meal.slot);
         meal.recipe = clone(recipe);
         ctx.usage[recipe.id] = (ctx.usage[recipe.id] || 0) + 1;
         ctx.lastBySlot[meal.slot] = recipe.id;
-        consumePantry(ctx.pantry, recipe, 1);
+        commitRecipe(recipe, byId, ctx, mult);
 
         // Суп или рагу логично съесть за два дня — так дешевле и меньше готовки.
         if (settings.batchTwoDays && recipe.batch && plan.days[di + 1]) {
@@ -320,6 +438,7 @@
             twin.recipe = clone(recipe);
             twin.leftoverOf = di;
             ctx.usage[recipe.id] = (ctx.usage[recipe.id] || 0) + 1;
+            commitRecipe(recipe, byId, ctx, mult); // второй день закупается тем же заходом
           }
         }
       });
@@ -704,6 +823,7 @@
   window.App = window.App || {};
   window.App.planner = {
     generate, rebalance, fitToBudget, budgetLimit, makeCtx, refillEmpty, tuneMacros,
+    slotTargets, targetsOf, personShares,
     upgradeSuggestions, recipeCost, unitCost, allMeals,
     DAY_NAMES: DAY_NAMES
   };

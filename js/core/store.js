@@ -16,6 +16,8 @@
       activity: 1.375, goal: 'maintain',
       protPerKg: null, fatPerKg: null,
       manual: null,
+      // Набор приёмов пищи у каждого свой: одному перекусы нужны, другому нет.
+      meals: ['breakfast', 'lunch', 'dinner'],
       needsSetup: true
     };
   }
@@ -89,6 +91,13 @@
     merged.people = (saved.people && saved.people.length)
       ? saved.people.map(p => Object.assign(defaultPerson(p.id, p.name, p.sex), p))
       : base.people;
+
+    // Раньше приёмы пищи были общими на всех. Переносим их в каждый профиль,
+    // чтобы дальше настраивать по человеку.
+    const commonMeals = (saved.settings && saved.settings.mealsActive) || base.settings.mealsActive;
+    merged.people.forEach(function (p) {
+      if (!Array.isArray(p.meals) || !p.meals.length) p.meals = commonMeals.slice();
+    });
 
     // Планы, сохранённые до исправления, могли накопить повторяющиеся
     // предупреждения и строки замен. Чистим при загрузке, чтобы не заставлять
