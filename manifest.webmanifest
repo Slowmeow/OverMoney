@@ -1,0 +1,20 @@
+{
+  "name": "Продукты по бюджету",
+  "short_name": "Продукты",
+  "description": "Недельное меню под калории, БЖУ и бюджет, с учётом того, что уже есть дома",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f5f3",
+  "theme_color": "#1f6f4a",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

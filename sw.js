@@ -1,0 +1,52 @@
+/* Кэш для работы без интернета: список покупок должен открываться в магазине,
+   где связи может не быть. */
+const CACHE = 'spendings-v1';
+
+const ASSETS = [
+  './',
+  'index.html',
+  'css/app.css',
+  'js/data/products.js',
+  'js/data/recipes.js',
+  'js/core/nutrition.js',
+  'js/core/store.js',
+  'js/core/shopping.js',
+  'js/core/planner.js',
+  'js/ui/helpers.js',
+  'js/ui/view-dashboard.js',
+  'js/ui/view-week.js',
+  'js/ui/view-list.js',
+  'js/ui/view-pantry.js',
+  'js/ui/view-prices.js',
+  'js/ui/view-settings.js',
+  'js/app.js',
+  'manifest.webmanifest'
+];
+
+self.addEventListener('install', function (event) {
+  event.waitUntil(
+    caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', function (event) {
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+/* Сначала сеть — чтобы правки файлов подхватывались сразу; кэш как запасной вариант. */
+self.addEventListener('fetch', function (event) {
+  if (event.request.method !== 'GET') return;
+  event.respondWith(
+    fetch(event.request)
+      .then(function (response) {
+        const copy = response.clone();
+        caches.open(CACHE).then(cache => cache.put(event.request, copy)).catch(() => {});
+        return response;
+      })
+      .catch(() => caches.match(event.request).then(hit => hit || caches.match('index.html')))
+  );
+});
