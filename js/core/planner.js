@@ -545,6 +545,11 @@
     const limit = budgetLimit();
     plan.budget = limit;
 
+    // Подгонку можно запускать повторно (кнопкой на экране недели), поэтому
+    // выводы прошлого запуска стираем: иначе они копятся и экран превращается
+    // в простыню из одинаковых абзацев.
+    plan.notes = [];
+
     let cost = SH().costOf(plan);
     plan.cost = cost;
     if (cost <= limit.allowed) return plan;
@@ -579,10 +584,11 @@
         const worthIt = saving >= bar.rub && saving >= cost * bar.share;
 
         if (worthIt && isAcceptable(plan) && withinWeeklyLimit(plan, candidate.p.id, byId)) {
-          plan.swaps.push({
-            from: product.n, to: candidate.p.n,
-            saved: Math.round(cost - newCost)
-          });
+          // При повторной подгонке та же пара может всплыть снова — не плодим
+          // строку, а суммируем экономию к уже записанной.
+          const known = plan.swaps.find(s => s.from === product.n && s.to === candidate.p.n);
+          if (known) known.saved += Math.round(saving);
+          else plan.swaps.push({ from: product.n, to: candidate.p.n, saved: Math.round(saving) });
           cost = newCost;
           improved = true;
           break;
