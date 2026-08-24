@@ -144,6 +144,8 @@ html, body {
   font-size: 12px;
 }
 
+.version { opacity: .6; margin-left: 6px; font-variant-numeric: tabular-nums; }
+
 .card {
   background: var(--surface);
   border: 1px solid var(--line);

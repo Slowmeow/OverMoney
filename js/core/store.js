@@ -89,6 +89,24 @@
     merged.people = (saved.people && saved.people.length)
       ? saved.people.map(p => Object.assign(defaultPerson(p.id, p.name, p.sex), p))
       : base.people;
+
+    // Планы, сохранённые до исправления, могли накопить повторяющиеся
+    // предупреждения и строки замен. Чистим при загрузке, чтобы не заставлять
+    // пересобирать неделю ради этого.
+    if (merged.plan) {
+      if (Array.isArray(merged.plan.notes)) {
+        merged.plan.notes = merged.plan.notes.filter((n, i, all) => all.indexOf(n) === i);
+      }
+      if (Array.isArray(merged.plan.swaps)) {
+        const seen = {};
+        merged.plan.swaps = merged.plan.swaps.filter(function (s) {
+          const key = s.from + '>' + s.to;
+          if (seen[key]) { seen[key].saved += s.saved || 0; return false; }
+          seen[key] = s;
+          return true;
+        });
+      }
+    }
     return merged;
   }
 

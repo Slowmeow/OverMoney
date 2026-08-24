@@ -2,6 +2,10 @@
 (function () {
   'use strict';
 
+  /* Показывается в подвале. Если после обновления цифра не изменилась —
+     браузер отдал страницу из кеша, и правок вы не увидите. */
+  const APP_VERSION = '0.4';
+
   const ORDER = ['dashboard', 'week', 'list', 'pantry', 'prices', 'settings'];
   let current = 'dashboard';
 
@@ -73,6 +77,9 @@
 
   function init() {
     window.App.store.load();
+
+    const versionEl = document.getElementById('version');
+    if (versionEl) versionEl.textContent = 'версия ' + APP_VERSION;
     window.App.ui.go = go;
     window.App.ui.refresh = refresh;
     window.App.ui.generate = generate;
