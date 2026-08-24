@@ -164,10 +164,14 @@
       })),
       h('div.form-grid', {}, [
         u.field('Одно блюдо за неделю не чаще', u.select([
-          { value: '1', label: '1 раза' },
+          { value: '1', label: '1 раза — максимум разнообразия' },
           { value: '2', label: '2 раз' },
-          { value: '3', label: '3 раз' }
-        ], String(s.maxRepeat), v => { set('maxRepeat', parseInt(v, 10)); window.App.ui.refresh(); })),
+          { value: '3', label: '3 раз' },
+          { value: '4', label: '4 раз' },
+          { value: '5', label: '5 раз' },
+          { value: '7', label: '7 раз — хоть каждый день' }
+        ], String(s.maxRepeat), v => { set('maxRepeat', parseInt(v, 10)); window.App.ui.refresh(); }),
+          s.maxRepeat >= 4 ? 'при 4 и выше разрешены повторы два дня подряд' : 'подряд одно блюдо не повторяется'),
         u.field('Супы и рагу на два дня', u.select([
           { value: 'yes', label: 'да, так дешевле' },
           { value: 'no', label: 'нет, готовлю каждый день заново' }
@@ -202,10 +206,12 @@
             r.p = v; S().save(); window.App.ui.refresh();
           }),
           u.numberInput(r.qty, function (v) { r.qty = v; S().save(); window.App.ui.refresh(); }, { min: '0', step: '0.5', class: 'input small-input' }),
-          u.select([{ value: 'month', label: 'шт в месяц' }, { value: 'week', label: 'шт в неделю' }], r.per, function (v) {
+          u.select(Object.keys(S().PERIODS).map(k => ({ value: k, label: S().PERIODS[k].n })), r.per, function (v) {
             r.per = v; S().save(); window.App.ui.refresh();
           }),
-          h('span.regular-cost', { text: prod ? u.money(prod.pr * r.qty) + ' / ' + (r.per === 'month' ? 'мес' : 'нед') : '' }),
+          h('span.regular-cost', {
+            text: prod ? u.money(prod.pr * r.qty / S().periodWeeks(r.per)) + ' / нед' : ''
+          }),
           u.button('✕', function () {
             state.regulars.splice(idx, 1);
             S().save();

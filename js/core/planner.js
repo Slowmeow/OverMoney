@@ -114,10 +114,15 @@
   function pickRecipe(slot, ctx) {
     const { byId, pantry, usage, lastBySlot, settings } = ctx;
 
+    // Запрет «то же самое два дня подряд» нужен тем, кто хочет разнообразия.
+    // Если человек сознательно поднял лимит повторов до 4 и выше, он готов есть
+    // одно блюдо подряд — и запрет только мешает.
+    const allowBackToBack = settings.maxRepeat >= 4;
+
     let candidates = ctx.recipes.filter(function (r) {
       if (r.m.indexOf(slot) === -1) return false;
       if ((usage[r.id] || 0) >= settings.maxRepeat) return false;
-      if (lastBySlot[slot] === r.id) return false; // одно и то же два дня подряд в один слот
+      if (!allowBackToBack && lastBySlot[slot] === r.id) return false;
       return true;
     });
 

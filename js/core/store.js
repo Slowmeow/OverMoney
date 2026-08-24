@@ -220,6 +220,21 @@
     };
   }
 
+  /* Периоды регулярных покупок в неделях. Шампунь берут раз в пару месяцев,
+     а средство для стирки — раз в полгода; загонять это в «раз в месяц»
+     значит завышать бюджет на пустом месте. */
+  const PERIODS = {
+    week:     { n: 'шт в неделю',    weeks: 1 },
+    month:    { n: 'шт в месяц',     weeks: 4.3 },
+    quarter:  { n: 'шт в 3 месяца',  weeks: 13 },
+    halfyear: { n: 'шт в полгода',   weeks: 26 },
+    year:     { n: 'шт в год',       weeks: 52 }
+  };
+
+  function periodWeeks(per) {
+    return (PERIODS[per] || PERIODS.month).weeks;
+  }
+
   /* Регулярные покупки в пересчёте на неделю. Дробные упаковки здесь допустимы:
      пачка кофе в месяц — это 0,23 пачки в неделю, и в бюджете это честнее,
      чем прыжки «то 449 ₽, то ноль». */
@@ -231,7 +246,7 @@
     (s.regulars || []).forEach(function (r) {
       const prod = byId[r.p];
       if (!prod) return;
-      const perWeek = r.per === 'month' ? r.qty / s.settings.weeksInMonth : r.qty;
+      const perWeek = r.qty / periodWeeks(r.per);
       const cost = perWeek * prod.pr;
       total += cost;
       items.push({ product: prod, perWeek: perWeek, cost: cost, raw: r });
@@ -258,7 +273,7 @@
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recipes, allRecipes,
     pantryAdd, pantrySet,
-    weeklyBudget, regularsWeeklyCost,
+    weeklyBudget, regularsWeeklyCost, PERIODS, periodWeeks,
     exportJson, importJson,
     defaultPerson
   };
