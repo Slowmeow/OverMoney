@@ -60,7 +60,17 @@
       ],
       pantry: {},          // { productId: количество в базовых единицах }
       excluded: {},        // { productId: true } — не предлагать этот продукт
-      prices: {},          // { productId: {pr, pd} } — правки цен поверх каталога
+      prices: {},          // устаревшее: цены до появления журнала, переносятся при загрузке
+
+      /* Журнал цен — единственный источник правды о том, сколько что стоит.
+         Одна запись = «в такой-то день в таком-то магазине такая-то марка
+         столько-то стоила». Из него выводятся и текущая цена для расчётов,
+         и графики. Марка и упаковка хранятся в записи, потому что творог
+         Простоквашино 200 г и Домик в деревне 180 г — это разные цены
+         за килограмм, и без этого сравнение врёт. */
+      priceLog: [],        // [{d, p, brand, store, pr, pack}]
+      brandChoice: {},     // {productId: марка} — какую брать в расчёт; по умолчанию самая дешёвая
+      stores: ['Пятёрочка', 'Магнит'],
       customProducts: [],
       customRecipes: [],
       disabledRecipes: {},
@@ -73,6 +83,7 @@
   let state = null;
 
   function load() {
+    invalidate();
     try {
       const raw = localStorage.getItem(KEY);
       state = raw ? migrate(JSON.parse(raw)) : defaultState();
@@ -99,6 +110,17 @@
       if (!Array.isArray(p.meals) || !p.meals.length) p.meals = commonMeals.slice();
     });
 
+    // Цены, правленные до появления журнала, переносим в него — иначе
+    // вся уже собранная пользователем точность потерялась бы.
+    merged.priceLog = merged.priceLog || [];
+    if (saved.prices && !merged.priceLog.length) {
+      Object.keys(saved.prices).forEach(function (id) {
+        const old = saved.prices[id];
+        if (!old || !(old.pr > 0)) return;
+        merged.priceLog.push({ d: old.pd || today(), p: id, brand: '', store: '', pr: old.pr, pack: null });
+      });
+    }
+
     // Планы, сохранённые до исправления, могли накопить повторяющиеся
     // предупреждения и строки замен. Чистим при загрузке, чтобы не заставлять
     // пересобирать неделю ради этого.
@@ -120,6 +142,7 @@
   }
 
   function save() {
+    invalidate();
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
@@ -137,22 +160,97 @@
     save();
   }
 
+  // ---------- ЖУРНАЛ ЦЕН И МАРКИ ----------
+
+  function round2(v) { return Math.round(v * 100) / 100; }
+
+  /* Записать цену. Повторная запись за тот же день по той же марке в том же
+     магазине заменяет прежнюю — иначе исправление опечатки плодило бы точки
+     на графике. */
+  function recordPrice(productId, opts) {
+    const s = get();
+    const d = opts.date || today();
+    const brand = (opts.brand || '').trim();
+    const store = (opts.store || '').trim();
+
+    s.priceLog = (s.priceLog || []).filter(
+      e => !(e.p === productId && e.brand === brand && e.store === store && e.d === d)
+    );
+    s.priceLog.push({
+      d: d, p: productId, brand: brand, store: store,
+      pr: round2(opts.pr),
+      pack: opts.pack || null
+    });
+    if (opts.prefer) s.brandChoice[productId] = brand;
+    save();
+  }
+
+  function priceHistory(productId) {
+    return (get().priceLog || [])
+      .filter(e => e.p === productId)
+      .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+  }
+
+  /* Последняя известная цена по каждой марке. */
+  function brandsOf(productId) {
+    const latest = {};
+    priceHistory(productId).forEach(function (e) {
+      const key = e.brand || '';
+      if (!latest[key] || latest[key].d <= e.d) latest[key] = e;
+    });
+    return Object.keys(latest).map(k => latest[k]);
+  }
+
+  /* Какая цена идёт в расчёты: выбранная марка, иначе самая дешёвая
+     за единицу веса — сравнивать по цене упаковки нельзя, упаковки разные. */
+  function effectivePrice(product) {
+    const brands = brandsOf(product.id);
+    if (!brands.length) return null;
+
+    const chosen = get().brandChoice[product.id];
+    if (chosen !== undefined) {
+      const hit = brands.find(b => (b.brand || '') === chosen);
+      if (hit) return hit;
+    }
+    return brands.slice().sort(function (a, b) {
+      return a.pr / (a.pack || product.pack) - b.pr / (b.pack || product.pack);
+    })[0];
+  }
+
   // ---------- КАТАЛОГ ПРОДУКТОВ ----------
 
-  /* Каталог = заготовка + свои продукты, поверх которых наложены правки цен. */
+  /* Каталог пересобирается редко, а читается на каждой итерации оптимизатора,
+     поэтому результат кешируется и сбрасывается при любой записи. */
+  let catalogCache = null;
+  let catalogByIdCache = null;
+
+  function invalidate() { catalogCache = null; catalogByIdCache = null; }
+
+  /* Каталог = заготовка + свои продукты, поверх которых наложены известные цены. */
   function products() {
+    if (catalogCache) return catalogCache;
     const s = get();
     const all = window.App.seedProducts.concat(s.customProducts || []);
-    return all.map(function (p) {
-      const override = s.prices[p.id];
-      if (!override) return p;
-      return Object.assign({}, p, { pr: override.pr, pd: override.pd, seed: false });
+    catalogCache = all.map(function (p) {
+      const best = effectivePrice(p);
+      if (!best) return p;
+      return Object.assign({}, p, {
+        pr: best.pr,
+        pack: best.pack || p.pack,
+        pd: best.d,
+        brand: best.brand,
+        store: best.store,
+        seed: false
+      });
     });
+    return catalogCache;
   }
 
   function productsById() {
+    if (catalogByIdCache) return catalogByIdCache;
     const map = {};
     products().forEach(p => { map[p.id] = p; });
+    catalogByIdCache = map;
     return map;
   }
 
@@ -171,10 +269,14 @@
     return product.seed || daysSince(product.pd) > get().settings.priceStaleDays;
   }
 
+  /* Быстрая правка цены без указания марки — из списка покупок.
+     Сохраняет марку и магазин, выбранные для этого продукта раньше,
+     чтобы правка попадала в ту же линию графика, а не создавала новую. */
   function setPrice(productId, price) {
-    const s = get();
-    s.prices[productId] = { pr: Math.round(price * 100) / 100, pd: today() };
-    save();
+    const known = brandsOf(productId);
+    const chosen = get().brandChoice[productId];
+    const base = known.find(b => (b.brand || '') === chosen) || known[0] || {};
+    recordPrice(productId, { pr: price, brand: base.brand || '', store: base.store || '', pack: base.pack || null });
   }
 
   // ---------- РЕЦЕПТЫ ----------
@@ -280,6 +382,7 @@
   window.App.store = {
     load, save, get, reset, today,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
+    recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
     recipes, allRecipes,
     pantryAdd, pantrySet,
     weeklyBudget, regularsWeeklyCost, PERIODS, periodWeeks,
