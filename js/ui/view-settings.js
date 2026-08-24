@@ -139,6 +139,9 @@
     const meals = window.App.MEALS;
 
     return u.card('Режим питания', [
+      h('p.hint', { text: 'Снятая галочка убирает приём пищи из плана, но не уменьшает дневную норму: ' +
+        'калории просто распределяются по оставшимся приёмам. Чтобы есть меньше, меняйте цель в профиле, ' +
+        'а не число приёмов пищи.' }),
       h('div.checkgroup', {}, Object.keys(meals).map(function (key) {
         const active = s.mealsActive.indexOf(key) !== -1;
         return h('label.checkline', {}, [
