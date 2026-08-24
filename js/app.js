@@ -6,7 +6,7 @@
      браузер отдал страницу из кеша, и правок вы не увидите. */
   const APP_VERSION = '0.4';
 
-  const ORDER = ['dashboard', 'week', 'list', 'pantry', 'prices', 'settings'];
+  const ORDER = ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings'];
   let current = 'dashboard';
 
   function go(name) {

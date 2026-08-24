@@ -163,11 +163,20 @@
           const actual = parseFloat(inputEl.value) || computed;
 
           state.pantry = SH().pantryAfter(plan, list);
+
+          // Сохраняем не только сумму: без калорий, белка и разбивки по отделам
+          // потом невозможно построить ни структуру трат, ни стоимость калории.
+          const byCat = {};
+          list.byCategory.forEach(g => { byCat[g.cat] = g.sum; });
+
           state.history.push({
             date: S().today(),
             planned: computed,
             actual: actual,
-            budget: S().weeklyBudget().food
+            budget: S().weeklyBudget().food,
+            kcal: plan.nutrition ? plan.nutrition.week.kcal : null,
+            protein: plan.nutrition ? plan.nutrition.week.p : null,
+            byCat: byCat
           });
           state.listState = {};
           S().save();

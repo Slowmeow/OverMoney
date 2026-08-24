@@ -72,6 +72,8 @@
     const stale = S().isStale(product);
     const excluded = !!state.excluded[product.id];
     const days = S().daysSince(product.pd);
+    const brands = S().brandsOf(product.id);
+    const history = S().priceHistory(product.id);
 
     const priceInput = h('input.input.price-input', {
       type: 'number', value: product.pr, min: '0', step: '1',
@@ -88,7 +90,8 @@
       h('div.price-main', {}, [
         h('span.price-name', { text: product.n }),
         h('span.price-meta', {
-          text: product.pl + ' · ' + Math.round(product.k) + ' ккал/100 · Б' + product.p + ' Ж' + product.f + ' У' + product.c
+          text: (product.brand ? product.brand + ' · ' : '') + product.pl +
+            ' · ' + Math.round(product.k) + ' ккал/100 · Б' + product.p + ' Ж' + product.f + ' У' + product.c
         })
       ]),
       h('div.price-input-wrap', {}, [
@@ -96,6 +99,10 @@
         h('span.price-age' + (stale ? '.stale' : ''), {
           text: product.seed ? 'не проверено' : (days === 0 ? 'сегодня' : days + ' дн. назад')
         })
+      ]),
+      h('div.price-actions', {}, [
+        u.button(brands.length > 1 ? 'Марки · ' + brands.length : 'Марки', () => brandsDialog(product), 'ghost small'),
+        history.length ? u.button('История', () => historyDialog(product), 'ghost small') : null
       ]),
       h('label.checkline.tight', {}, [
         h('input', {
@@ -110,6 +117,121 @@
         h('span', { text: 'не предлагать' })
       ])
     ]);
+  }
+
+  /* Марки одного продукта: у каждой своя цена и своя упаковка, поэтому
+     сравнивать их можно только по цене за килограмм. */
+  function brandsDialog(product) {
+    const u = U(), h = u.h;
+    const state = S().get();
+    const brands = S().brandsOf(product.id);
+    const chosen = state.brandChoice[product.id];
+    const unit = product.unit === 'ml' ? 'л' : 'кг';
+
+    const list = h('div.brand-list', {}, brands.length ? brands
+      .slice()
+      .sort((a, b) => a.pr / (a.pack || product.pack) - b.pr / (b.pack || product.pack))
+      .map(function (b) {
+        const pack = b.pack || product.pack;
+        const perUnit = b.pr / pack * 1000;
+        const isChosen = chosen === (b.brand || '');
+        const isCheapest = b === brands.slice().sort((x, y) => x.pr / (x.pack || product.pack) - y.pr / (y.pack || product.pack))[0];
+
+        return h('div.brand-row' + (isChosen ? '.chosen' : ''), {}, [
+          h('div.brand-main', {}, [
+            h('span.brand-name', { text: b.brand || 'без марки' }),
+            h('span.brand-meta', {
+              text: b.pr + ' ₽ за ' + Math.round(pack) + (product.unit === 'ml' ? ' мл' : ' г') +
+                ' · ' + Math.round(perUnit) + ' ₽/' + unit +
+                (b.store ? ' · ' + b.store : '') + ' · ' + b.d
+            })
+          ]),
+          isCheapest && !chosen ? h('span.brand-tag', { text: 'идёт в расчёт' }) : null,
+          u.button(isChosen ? 'Выбрана' : 'Брать эту', function () {
+            if (isChosen) delete state.brandChoice[product.id];
+            else state.brandChoice[product.id] = b.brand || '';
+            S().save();
+            document.querySelectorAll('.modal-overlay').forEach(el => el.remove());
+            window.App.ui.refresh();
+          }, isChosen ? 'small primary' : 'small')
+        ]);
+      }) : h('p.hint', { text: 'Пока ни одной записи. Добавьте первую ниже.' }));
+
+    const f = {};
+    const mk = (k, v, attrs) => (f[k] = h('input.input', Object.assign({ value: v }, attrs || {})));
+    const stores = (state.stores || []).map(s => ({ value: s, label: s }));
+    let store = stores.length ? stores[0].value : '';
+
+    const form = h('div.form-grid', {}, [
+      u.field('Марка', mk('brand', ''), 'например, Простоквашино'),
+      u.field('Магазин', stores.length ? u.select(stores, store, v => { store = v; }) : mk('store', '')),
+      u.field('Цена за упаковку, ₽', mk('pr', product.pr, { type: 'number', min: '0', step: '1' })),
+      u.field('Размер упаковки', mk('pack', product.pack, { type: 'number', min: '1' }),
+        product.unit === 'ml' ? 'мл' : 'г'),
+      u.field('Дата покупки', mk('date', S().today(), { type: 'date' }))
+    ]);
+
+    u.modal('Марки: ' + product.n, [
+      h('p.hint', { text: 'В расчёты идёт выбранная марка, а если ничего не выбрано — самая дешёвая ' +
+        'за ' + unit + '. Цена за упаковку для сравнения не годится: упаковки у марок разные.' }),
+      list,
+      h('h4.sub-head', { text: 'Записать цену' }),
+      form
+    ], [
+      { label: 'Закрыть' },
+      {
+        label: 'Записать', cls: 'primary', onClick: function () {
+          const price = parseFloat(f.pr.value);
+          if (!(price > 0)) { u.toast('Нужна цена', 'bad'); return true; }
+          S().recordPrice(product.id, {
+            pr: price,
+            brand: f.brand.value,
+            store: stores.length ? store : (f.store ? f.store.value : ''),
+            pack: parseFloat(f.pack.value) || product.pack,
+            date: f.date.value || S().today()
+          });
+          u.toast('Записано: ' + product.n);
+          window.App.ui.refresh();
+        }
+      }
+    ]);
+  }
+
+  /* График цены во времени: линия на каждую марку. */
+  function historyDialog(product) {
+    const u = U(), h = u.h;
+    const entries = S().priceHistory(product.id);
+    const unit = product.unit === 'ml' ? 'л' : 'кг';
+
+    // Группируем по марке — цвет закреплён за маркой, а не за местом в списке.
+    const byBrand = {};
+    entries.forEach(function (e) {
+      const key = e.brand || 'без марки';
+      (byBrand[key] = byBrand[key] || []).push({
+        x: e.d,
+        y: Math.round(e.pr / (e.pack || product.pack) * 1000)
+      });
+    });
+
+    const names = Object.keys(byBrand).sort();
+    // Больше пяти линий не рисуем: соседние станут неразличимы.
+    const shown = names.slice(0, 5);
+    const series = shown.map((name, i) => ({
+      name: name,
+      color: window.App.charts.seriesColor(i),
+      points: byBrand[name]
+    }));
+
+    const chart = window.App.charts.lineChart({
+      title: product.n,
+      subtitle: 'Цена за ' + unit + ' — так марки с разными упаковками сравнимы между собой.' +
+        (names.length > shown.length ? ' Показаны первые ' + shown.length + ' марок из ' + names.length + '.' : ''),
+      series: series,
+      yFormat: v => window.App.charts.fmtInt(v) + ' ₽',
+      height: 230
+    });
+
+    u.modal('История цены', chart, [{ label: 'Закрыть' }]);
   }
 
   function addProductDialog() {
