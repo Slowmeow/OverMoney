@@ -127,9 +127,14 @@
         u.field('Белки, г', u.numberInput(person.manual.p, v => { person.manual.p = v; S().save(); window.App.ui.refresh(); })),
         u.field('Жиры, г', u.numberInput(person.manual.f, v => { person.manual.f = v; S().save(); window.App.ui.refresh(); })),
         u.field('Углеводы, г', u.numberInput(person.manual.c, v => { person.manual.c = v; S().save(); window.App.ui.refresh(); }))
-      ]) : h('p.person-result', {
-        text: 'Норма: ' + t.kcal + ' ккал · Б ' + t.p + ' · Ж ' + t.f + ' · У ' + t.c
-      })
+      ]) : h('div.person-result', {}, [
+        h('span', { text: 'Норма: ' + t.kcal + ' ккал · Б ' + t.p + ' · Ж ' + t.f + ' · У ' + t.c }),
+        h('span.person-formula', {
+          text: 'Белок ' + t.protPerKg + ' г/кг, жиры ' + t.fatPerKg + ' г/кг — ставка зависит от активности и цели. ' +
+            'Прибавьте нагрузку, и норма белка вырастет.' +
+            (t.protCapped ? ' Белок ограничен третью рациона — выше он не даёт пользы.' : '')
+        })
+      ])
     ]);
   }
 

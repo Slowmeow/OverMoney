@@ -11,10 +11,50 @@
   };
 
   const GOALS = {
-    cut:      { n: 'Снижение веса', kcalMul: 0.80, protPerKg: 1.8, fatPerKg: 0.9 },
-    maintain: { n: 'Поддержание',   kcalMul: 1.00, protPerKg: 1.6, fatPerKg: 1.0 },
-    bulk:     { n: 'Набор массы',   kcalMul: 1.12, protPerKg: 1.8, fatPerKg: 1.0 }
+    cut:      { n: 'Снижение веса', kcalMul: 0.80 },
+    maintain: { n: 'Поддержание',   kcalMul: 1.00 },
+    bulk:     { n: 'Набор массы',   kcalMul: 1.12 }
   };
+
+  /* Белок, г на кг массы тела. Зависит и от цели, и от нагрузки: чем тяжелее
+     работа или тренировки, тем больше белка нужно на восстановление, а на
+     дефиците калорий он ещё и защищает мышцы от распада. Диапазон 1,2–2,4
+     соответствует позиции ISSN и ACSM: 1,4–2,0 г/кг для физически активных
+     и до ~2,4 г/кг при похудении с сохранением мышц. */
+  const PROTEIN_PER_KG = {
+    '1.2':   { cut: 1.6, maintain: 1.2, bulk: 1.6 },
+    '1.375': { cut: 1.8, maintain: 1.5, bulk: 1.7 },
+    '1.55':  { cut: 2.0, maintain: 1.6, bulk: 1.8 },
+    '1.725': { cut: 2.2, maintain: 1.8, bulk: 2.0 },
+    '1.9':   { cut: 2.4, maintain: 2.0, bulk: 2.2 }
+  };
+
+  /* Жиры: ниже 0,8 г/кг падает синтез гормонов и усвоение жирорастворимых
+     витаминов, поэтому это пол, а не цель. */
+  const FAT_PER_KG = { cut: 0.9, maintain: 1.0, bulk: 1.0 };
+  const FAT_FLOOR_PER_KG = 0.8;
+
+  // Белок дороже всех макронутриентов, поэтому ограничиваем его сверху:
+  // выше трети рациона он не даёт пользы, а бюджет ломает.
+  const PROTEIN_MAX_KCAL_SHARE = 0.35;
+
+  /* Активность в профиле хранится числом; берём ближайшую ступень таблицы,
+     чтобы произвольное значение не обрушило расчёт. */
+  function nearestActivity(value) {
+    const keys = Object.keys(PROTEIN_PER_KG);
+    return keys.reduce(function (best, key) {
+      return Math.abs(key - value) < Math.abs(best - value) ? key : best;
+    }, keys[0]);
+  }
+
+  function proteinPerKg(person) {
+    const goal = GOALS[person.goal] ? person.goal : 'maintain';
+    return PROTEIN_PER_KG[nearestActivity(person.activity)][goal];
+  }
+
+  function fatPerKg(person) {
+    return FAT_PER_KG[person.goal] || FAT_PER_KG.maintain;
+  }
 
   /* Базовый обмен по формуле Mifflin-St Jeor — она даёт наименьшую ошибку
      на людях без экстремального состава тела. */
@@ -33,17 +73,27 @@
     const goal = GOALS[person.goal] || GOALS.maintain;
     const kcal = Math.round(bmr(person) * person.activity * goal.kcalMul);
 
-    const protPerKg = person.protPerKg || goal.protPerKg;
-    const fatPerKg = person.fatPerKg || goal.fatPerKg;
+    const usedProtPerKg = person.protPerKg || proteinPerKg(person);
+    const usedFatPerKg = Math.max(FAT_FLOOR_PER_KG, person.fatPerKg || fatPerKg(person));
 
-    const p = Math.round(person.weight * protPerKg);
-    const f = Math.round(person.weight * fatPerKg);
+    let p = Math.round(person.weight * usedProtPerKg);
+    const f = Math.round(person.weight * usedFatPerKg);
+
+    // Потолок по белку: у людей с большим весом расчёт «на кг» иначе уводит
+    // в 250 г белка, которые и не нужны, и стоят как половина бюджета.
+    const pCap = Math.round(kcal * PROTEIN_MAX_KCAL_SHARE / 4);
+    if (p > pCap) p = pCap;
 
     // Углеводы — то, что осталось после белка и жира.
     let c = Math.round((kcal - p * 4 - f * 9) / 4);
     if (c < 50) c = 50; // ниже этого рацион перестаёт быть выполнимым
 
-    return { kcal, p, f, c, manual: false };
+    return {
+      kcal, p, f, c, manual: false,
+      protPerKg: Math.round(usedProtPerKg * 100) / 100,
+      fatPerKg: Math.round(usedFatPerKg * 100) / 100,
+      protCapped: p === pCap
+    };
   }
 
   /* Суммарная суточная норма всех едоков. */
@@ -100,6 +150,9 @@
   window.App.nutrition = {
     ACTIVITY: ACTIVITY,
     GOALS: GOALS,
+    PROTEIN_PER_KG: PROTEIN_PER_KG,
+    proteinPerKg: proteinPerKg,
+    fatPerKg: fatPerKg,
     bmr: bmr,
     personTargets: personTargets,
     householdTargets: householdTargets,
