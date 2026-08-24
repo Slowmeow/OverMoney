@@ -39,6 +39,9 @@
       nav.appendChild(window.App.ui.h('button.tab' + (name === current ? '.active' : ''), {
         type: 'button',
         onclick: () => go(name),
+        // Активную вкладку экранный диктор иначе не отличит от остальных:
+        // подсветка цветом ему не видна.
+        'aria-current': name === current ? 'page' : null,
         text: view.title
       }));
     });
