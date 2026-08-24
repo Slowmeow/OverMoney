@@ -493,6 +493,21 @@ html, body {
   .main { max-width: none; padding: 0; }
 }
 
+/* Заголовки и подписи не должны заканчиваться одиноким словом на строке. */
+h1, h2, h3, .card-title { text-wrap: balance; }
+p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
+
+/* Пальцем в магазине попасть в кнопку высотой 27 px невозможно.
+   Правило срабатывает только на сенсорных экранах, мышь ничего не теряет. */
+@media (pointer: coarse) {
+  .btn { min-height: 42px; }
+  .btn.small { min-height: 34px; padding: 7px 11px; }
+  .tab { padding: 12px 14px; }
+  .check { width: 24px; height: 24px; }
+  .input { padding: 10px 12px; font-size: 16px; } /* 16px — иначе iOS зумит страницу при фокусе */
+  .item { padding: 12px 0; }
+}
+
 @media (max-width: 520px) {
   .bar-row { grid-template-columns: 76px 1fr 76px; font-size: 12px; }
   .meal-slot { flex-basis: 56px; }
