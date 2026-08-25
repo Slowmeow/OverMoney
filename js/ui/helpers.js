@@ -177,19 +177,35 @@
   // Оставлено для совместимости со старым вызовом.
   function hardFitButton() { return budgetActions(); }
 
-  /* Разбор перерасхода.
+  /* Разбор превышения бюджета.
    *
    * Красная цифра «не хватает 149 ₽» говорит, что всё плохо, но не говорит,
-   * что делать. Здесь видно, на чём именно ушли деньги, и что можно поставить
+   * что делать. Здесь видно, на чём набежала сумма и что можно поставить
    * вместо. Предложения не навязываются: любое можно заменить на другое
-   * из того же ряда или убрать навсегда, если оно не подходит. */
-  function overspendCard(actualSpend) {
+   * из того же ряда или убрать навсегда, если оно не подходит.
+   *
+   * isActual различает два разных случая, которые нельзя называть одинаково:
+   * план, который ещё можно переделать, и чек, по которому деньги уже ушли. */
+  function overspendCard(amount, isActual) {
     const store = window.App.store;
     const plan = store.plan();
     if (!plan) return null;
 
-    const advice = window.App.planner.overspendAdvice(plan, actualSpend);
+    const advice = window.App.planner.overspendAdvice(plan, amount);
     if (advice.over <= 0) return null;
+
+    /* Пока покупок не было, это расчёт, а не потраченные деньги.
+       Называть его перерасходом — врать: человек видит «Потрачено 5 298 ₽»,
+       ничего не купив. Слова про траты появляются только тогда,
+       когда сумма пришла из чека. */
+    const title = isActual
+      ? 'Перерасход по чеку ' + money(advice.over)
+      : 'Дороже бюджета на ' + money(advice.over);
+
+    const lead = isActual
+      ? 'Потрачено ' + money(advice.spent) + ' при бюджете ' + money(advice.limit) + '.'
+      : 'План стоит ' + money(advice.spent) + ' при бюджете ' + money(advice.limit) +
+        '. Это расчёт: деньги ещё не потрачены, и список можно изменить.';
 
     const rows = advice.ideas.map(function (idea) {
       // Выбранная замена хранится в самой строке: человек может перебрать
@@ -236,15 +252,16 @@
 
     const dismissed = Object.keys(store.get().dismissedSwaps || {}).length;
 
-    return card('Перерасход ' + money(advice.over), [
-      h('p', { text: 'Потрачено ' + money(advice.spent) + ' при бюджете ' + money(advice.limit) + '.' }),
+    return card(title, [
+      h('p', { text: lead }),
       rows.length
         ? h('div.over-list', {}, rows)
         : h('p.hint', { text: 'Заменить нечего: дешёвых аналогов той же роли в каталоге не осталось. ' +
             'Остаётся жёсткая подгонка или пересмотр бюджета.' }),
       rows.length
-        ? h('p.hint', { text: 'Экономия оценена по цене грамма белка или килокалории. ' +
-            'Итог может отличаться: продукты продаются целыми упаковками.' })
+        ? h('p.hint', { text: 'Экономия посчитана пробой: замена применяется к плану, ' +
+            'стоимость пересчитывается по целым упаковкам, план возвращается на место. ' +
+            'Если замена не удешевит, она откатится.' })
         : null,
       dismissed
         ? h('div.row-actions', {}, button('Вернуть отклонённые предложения (' + dismissed + ')', function () {
