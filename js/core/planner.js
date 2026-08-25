@@ -294,8 +294,27 @@
 
   // ---------------------------------------------------------------- сборка
 
-  function pickRecipe(slot, ctx) {
+  /* Что уже стоит в этом дне: одно и то же блюдо на обед и на ужин —
+     это не экономия, а надоедание, и такой повтор отличается от «то же самое,
+     но завтра». Поэтому запрет на день действует независимо от того,
+     сколько повторов за неделю человек себе разрешил. */
+  function usedOnDay(day) {
+    return day.meals.filter(m => m.recipe).map(m => m.recipe.id);
+  }
+
+  /* Блюда этого же дня, кроме самого заменяемого. Нужно там, где приём пищи
+     меняют задним числом — ради белка или ради бюджета: эти замены выбирали
+     блюдо по слоту, не глядя на остальной день, и возвращали дубль,
+     который подбор только что аккуратно обошёл. */
+  function otherDishesToday(plan, meal) {
+    const day = plan.days[meal._day];
+    if (!day) return [];
+    return day.meals.filter(m => m !== meal && m.recipe).map(m => m.recipe.id);
+  }
+
+  function pickRecipe(slot, ctx, usedToday) {
     const { byId, pantry, usage, lastBySlot, settings } = ctx;
+    const sameDay = usedToday || [];
 
     // Запрет «то же самое два дня подряд» нужен тем, кто хочет разнообразия.
     // Если человек сознательно поднял лимит повторов до 4 и выше, он готов есть
@@ -304,12 +323,18 @@
 
     let candidates = ctx.recipes.filter(function (r) {
       if (r.m.indexOf(slot) === -1) return false;
+      if (sameDay.indexOf(r.id) !== -1) return false;
       if ((usage[r.id] || 0) >= settings.maxRepeat) return false;
       if (!allowBackToBack && lastBySlot[slot] === r.id) return false;
       return true;
     });
 
-    // Если фильтры срезали всё (мало рецептов после исключений) — ослабляем их.
+    // Если фильтры срезали всё (мало рецептов после исключений) — ослабляем их
+    // по одному, начиная с наименее важного. Запрет на повтор внутри дня
+    // снимается последним: он заметнее всего портит впечатление от меню.
+    if (!candidates.length) {
+      candidates = ctx.recipes.filter(r => r.m.indexOf(slot) !== -1 && sameDay.indexOf(r.id) === -1);
+    }
     if (!candidates.length) {
       candidates = ctx.recipes.filter(r => r.m.indexOf(slot) !== -1);
     }
@@ -481,7 +506,7 @@
     plan.days.forEach(function (day) {
       day.meals.forEach(function (meal) {
         if (meal.recipe) return;
-        const recipe = pickRecipe(meal.slot, ctx);
+        const recipe = pickRecipe(meal.slot, ctx, usedOnDay(day));
         if (!recipe) return;
         meal.recipe = clone(recipe);
         meal.leftoverOf = null;
@@ -510,7 +535,7 @@
         // День уже занят вчерашней готовкой — ничего не выбираем.
         if (meal.recipe) return;
 
-        const recipe = pickRecipe(meal.slot, ctx);
+        const recipe = pickRecipe(meal.slot, ctx, usedOnDay(day));
         if (!recipe) return;
 
         const mult = estimateMult(recipe, byId, ctx, meal.slot);
@@ -647,8 +672,10 @@
       });
       const worst = meals[0];
 
+      const busyToday = otherDishesToday(plan, worst);
       const better = ctx.recipes
-        .filter(r => r.m.indexOf(worst.slot) !== -1 && r.id !== worst.recipe.id)
+        .filter(r => r.m.indexOf(worst.slot) !== -1 && r.id !== worst.recipe.id &&
+          busyToday.indexOf(r.id) === -1)
         .map(function (r) {
           const nut = N().recipeNutrition(r, byId);
           return { r: r, density: nut.total.p / Math.max(1, nut.total.kcal) };
@@ -859,8 +886,10 @@
 
       let improved = false;
       for (const meal of meals) {
+        const busyToday = otherDishesToday(plan, meal);
         const alternatives = recipes
-          .filter(r => r.m.indexOf(meal.slot) !== -1 && r.id !== meal.recipe.id)
+          .filter(r => r.m.indexOf(meal.slot) !== -1 && r.id !== meal.recipe.id &&
+            busyToday.indexOf(r.id) === -1)
           .map(function (r) {
             const nut = N().recipeNutrition(r, byId);
             return { r: r, perKcal: recipeCost(r, byId, 1) / Math.max(1, nut.total.kcal) };
