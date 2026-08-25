@@ -141,13 +141,29 @@
     return merged;
   }
 
-  function save() {
+  /* Запись только в браузер — без обращения к общей базе. */
+  function persist() {
     invalidate();
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
       alert('Не удалось сохранить данные: ' + e.message);
     }
+  }
+
+  function save() {
+    persist();
+    // Локальная запись уже прошла, поэтому отправка на сервер ничего не задерживает
+    // и её неудача ничего не теряет.
+    if (window.App.sync) window.App.sync.push(() => state);
+  }
+
+  /* Принять состояние, пришедшее с другого устройства. Обратно не отправляем —
+     иначе два устройства будут бесконечно пересылать друг другу одно и то же. */
+  function adopt(remote) {
+    state = migrate(remote);
+    persist();
+    return state;
   }
 
   function get() {
@@ -380,7 +396,7 @@
 
   window.App = window.App || {};
   window.App.store = {
-    load, save, get, reset, today,
+    load, save, get, reset, today, adopt, persist,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
     recipes, allRecipes,

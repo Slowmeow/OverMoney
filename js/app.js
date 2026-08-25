@@ -4,7 +4,7 @@
 
   /* Показывается в подвале. Если после обновления цифра не изменилась —
      браузер отдал страницу из кеша, и правок вы не увидите. */
-  const APP_VERSION = '0.4';
+  const APP_VERSION = '0.5';
 
   const ORDER = ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings'];
   let current = 'dashboard';
@@ -75,6 +75,77 @@
     }
   }
 
+  /* Общая база: подтягиваем при старте и при каждом возвращении к вкладке.
+     Опрашивать чаще незачем — правки делает человек, а не поток событий. */
+  function setupSync() {
+    const sync = window.App.sync;
+    const store = window.App.store;
+    if (!sync) return;
+
+    let busy = false;
+
+    function pull(announce) {
+      if (busy) return;
+      busy = true;
+      sync.pull().then(function (remote) {
+        busy = false;
+        if (!remote) return;
+        store.adopt(remote);
+        refresh();
+        if (announce) window.App.ui.toast('Данные обновлены с другого устройства');
+      }).catch(function () { busy = false; });
+    }
+
+    sync.onChange(function (st) {
+      const el = document.getElementById('sync');
+      if (!el) return;
+      if (st.conflict) el.textContent = '· расхождение с общей базой';
+      else if (!st.available) el.textContent = '· только этот браузер';
+      else if (st.pending) el.textContent = '· сохраняю…';
+      else el.textContent = '· общая база';
+    });
+
+    pull(false);
+    // Первое устройство наполняет пустую базу своим состоянием.
+    setTimeout(() => sync.flush(() => store.get()).then(handleConflict), 400);
+
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) pull(true);
+    });
+    window.addEventListener('focus', () => pull(true));
+    window.addEventListener('online', () => pull(true));
+  }
+
+  /* Расхождение развязывает человек: молча затирать чужую работу нельзя. */
+  function handleConflict(result) {
+    if (!result || !result.conflict) return;
+    const u = window.App.ui;
+    const store = window.App.store;
+
+    u.modal('Данные разошлись между устройствами', [
+      u.h('p', { text: 'Пока вы работали здесь, базу изменили с другого устройства. ' +
+        'Слить автоматически нельзя — придётся выбрать, какая версия верна.' }),
+      u.h('p.hint', { text: 'Совет: если на другом устройстве вы только что отмечали цены в магазине, ' +
+        'берите версию оттуда — здесь правки, скорее всего, мельче.' })
+    ], [
+      {
+        label: 'Взять с другого устройства', onClick: function () {
+          store.adopt(result.state);
+          window.App.sync.acceptRemote(result.rev);
+          refresh();
+          u.toast('Приняты данные с другого устройства');
+        }
+      },
+      {
+        label: 'Оставить эти', cls: 'primary', onClick: function () {
+          window.App.sync.overwrite(() => store.get()).then(function () {
+            u.toast('Общая база перезаписана этой версией');
+          });
+        }
+      }
+    ]);
+  }
+
   function init() {
     window.App.store.load();
 
@@ -93,6 +164,8 @@
       const name = location.hash.replace('#', '');
       if (name && name !== current && window.App.views[name]) go(name);
     });
+
+    setupSync();
 
     if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
       navigator.serviceWorker.register('sw.js').catch(() => { /* офлайн-режим просто не включится */ });
