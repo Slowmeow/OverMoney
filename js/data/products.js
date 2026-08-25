@@ -139,6 +139,60 @@
     P('choco_dark', 'Шоколад тёмный', 'grocery', 90, 'плитка 90 г', false, 129, 539, 6.2, 35.4, 48.2, { life: 240, grp: 'sweet', role: 'fat', maxWeek: 120 }),
     P('cookies', 'Печенье', 'grocery', 400, 'упак. 400 г', false, 119, 417, 7.5, 11.8, 74.0, { life: 180, grp: 'sweet', role: 'carb', maxWeek: 250 }),
 
+    // ---------- ПОЛУФАБРИКАТЫ И ГОТОВОЕ ----------
+    // Дорого за килограмм, но экономит время. Оптимизатор сам решит,
+    // когда это оправдано, а когда лучше приготовить с нуля.
+    P('pelmeni', 'Пельмени замороженные', 'meat', 800, 'пачка 800 г', false, 359, 248, 11.9, 12.4, 22.0, { life: 180, grp: 'prot_meat', role: 'protein', maxWeek: 500 }),
+    P('vareniki', 'Вареники с картофелем', 'meat', 800, 'пачка 800 г', false, 239, 195, 5.2, 4.0, 34.0, { life: 180, grp: null, role: 'carb', maxWeek: 500 }),
+    P('nuggets', 'Наггетсы куриные', 'meat', 300, 'пачка 300 г', false, 259, 270, 14.0, 16.0, 17.0, { life: 180, grp: null, role: 'protein', maxWeek: 350 }),
+    P('fries_frozen', 'Картофель фри замороженный', 'veg', 750, 'пачка 750 г', false, 239, 165, 2.6, 5.0, 26.0, { life: 180, grp: null, role: 'carb', maxWeek: 500 }),
+    P('pizza_frozen', 'Пицца замороженная', 'grain', 350, 'упак. 350 г', false, 289, 248, 10.0, 10.0, 30.0, { life: 180, grp: null, role: 'carb', maxWeek: 400 }),
+    P('dough_puff', 'Тесто слоёное замороженное', 'grain', 500, 'пачка 500 г', false, 189, 363, 6.0, 24.0, 31.0, { life: 180, grp: null, role: 'carb' }),
+    P('noodles_instant', 'Лапша быстрого приготовления', 'grain', 60, 'пачка 60 г', false, 45, 448, 9.0, 18.0, 62.0, { life: 240, grp: null, role: 'carb', maxWeek: 240 }),
+    P('stew_can', 'Тушёнка говяжья', 'meat', 325, 'банка 325 г', false, 269, 220, 15.0, 17.0, 0.4, { life: 720, grp: 'prot_meat', role: 'protein', maxWeek: 350 }),
+
+    // ---------- КОЛБАСНОЕ И СЫРЫ ----------
+    P('sausage_boiled', 'Колбаса варёная', 'meat', 500, 'батон 500 г', false, 289, 257, 12.8, 22.2, 1.5, { life: 21, grp: 'prot_meat', role: 'protein', maxWeek: 350 }),
+    P('ham', 'Ветчина', 'meat', 400, 'упак. 400 г', false, 299, 209, 16.0, 16.0, 1.0, { life: 21, grp: 'prot_meat', role: 'protein', maxWeek: 350 }),
+    P('salami', 'Колбаса копчёная', 'meat', 350, 'палка 350 г', false, 349, 425, 17.0, 40.0, 0.5, { life: 60, grp: 'prot_meat', role: 'fat', maxWeek: 200 }),
+    P('lard', 'Сало солёное', 'meat', 400, 'кусок 400 г', false, 299, 797, 2.4, 89.0, 0, { life: 60, grp: null, role: 'fat', maxWeek: 150 }),
+    P('mozzarella', 'Сыр моцарелла', 'dairy', 250, 'упак. 250 г', false, 239, 280, 18.0, 22.0, 2.2, { life: 21, grp: 'prot_dairy', role: 'protein' }),
+    P('cheese_melted', 'Сыр плавленый', 'dairy', 180, 'упак. 180 г', false, 129, 290, 11.0, 25.0, 3.0, { life: 60, grp: 'fat_dairy', role: 'fat' }),
+    P('feta', 'Брынза', 'dairy', 250, 'упак. 250 г', false, 239, 260, 17.0, 20.0, 2.0, { life: 21, grp: 'prot_dairy', role: 'protein' }),
+    P('cream10', 'Сливки 10%', 'dairy', 500, 'упак. 500 мл', false, 179, 118, 3.0, 10.0, 4.0, { unit: 'ml', life: 14, grp: 'fat_dairy', role: 'fat' }),
+    P('ryazhenka', 'Ряженка', 'dairy', 900, 'бутылка 900 мл', false, 115, 67, 3.0, 4.0, 4.2, { unit: 'ml', life: 10, grp: 'dairy_liquid', role: 'protein' }),
+    P('condensed_milk', 'Молоко сгущённое', 'grocery', 380, 'банка 380 г', false, 139, 320, 7.2, 8.5, 56.0, { life: 720, grp: 'sweet', role: 'carb', maxWeek: 200 }),
+
+    // ---------- РЫБА И МОРЕПРОДУКТЫ ----------
+    P('pink_salmon', 'Горбуша', 'fish', 1000, 'кг', true, 489, 142, 20.5, 6.5, 0, { life: 60, wst: 0.25, grp: 'prot_fish', role: 'protein' }),
+    P('shrimp', 'Креветки варёно-мороженые', 'fish', 500, 'пачка 500 г', false, 459, 95, 20.0, 1.8, 0, { life: 180, wst: 0.45, grp: 'prot_fish', role: 'protein', maxWeek: 300 }),
+    P('crab_sticks', 'Крабовые палочки', 'fish', 200, 'упак. 200 г', false, 149, 88, 6.0, 1.0, 13.0, { life: 60, grp: null, role: 'protein', maxWeek: 250 }),
+    P('sprats_can', 'Шпроты', 'fish', 160, 'банка 160 г', false, 159, 363, 17.0, 32.0, 0.4, { life: 720, grp: 'prot_fish', role: 'fat', maxWeek: 200 }),
+
+    // ---------- МЯСО, ПРОДОЛЖЕНИЕ ----------
+    P('turkey_fillet', 'Индейка, филе', 'meat', 1000, 'кг', true, 549, 104, 19.2, 3.0, 0, { life: 3, grp: 'prot_meat', role: 'protein' }),
+    P('chicken_hearts', 'Сердечки куриные', 'meat', 1000, 'кг', true, 369, 159, 15.8, 10.3, 0.8, { life: 2, grp: 'prot_meat', role: 'protein', maxWeek: 350 }),
+
+    // ---------- ОВОЩИ И ЗЕЛЕНЬ, ПРОДОЛЖЕНИЕ ----------
+    P('pumpkin', 'Тыква', 'veg', 1000, 'кг', true, 79, 22, 1.0, 0.1, 4.4, { life: 60, wst: 0.3, grp: 'veg_base', role: 'veg' }),
+    P('eggplant', 'Баклажан', 'veg', 1000, 'кг', true, 219, 24, 1.2, 0.1, 4.5, { life: 10, wst: 0.1, grp: 'veg_fresh', role: 'veg' }),
+    P('radish', 'Редис', 'veg', 1000, 'кг', true, 189, 20, 1.2, 0.1, 3.4, { life: 7, wst: 0.15, grp: 'veg_fresh', role: 'veg' }),
+    P('lettuce', 'Салат листовой', 'veg', 150, 'упак. 150 г', false, 129, 15, 1.4, 0.2, 2.0, { life: 5, grp: 'veg_fresh', role: 'veg' }),
+    P('green_onion', 'Лук зелёный', 'veg', 100, 'пучок 100 г', false, 79, 19, 1.3, 0.1, 3.2, { life: 5, grp: null, role: 'veg' }),
+    P('olives', 'Оливки', 'veg', 300, 'банка 300 г', false, 189, 115, 0.8, 10.7, 6.3, { life: 720, grp: null, role: 'fat', maxWeek: 200 }),
+    P('squash_caviar', 'Икра кабачковая', 'veg', 460, 'банка 460 г', false, 149, 97, 1.2, 7.0, 7.4, { life: 720, grp: null, role: 'veg' }),
+
+    // ---------- БАКАЛЕЯ, ПРОДОЛЖЕНИЕ ----------
+    P('breadcrumbs', 'Сухари панировочные', 'grocery', 400, 'пачка 400 г', false, 89, 347, 11.0, 2.0, 72.0, { life: 365, grp: null, role: 'carb' }),
+    P('starch', 'Крахмал', 'grocery', 200, 'пачка 200 г', false, 69, 320, 0.1, 0, 79.0, { life: 720, grp: null, role: 'carb' }),
+    P('mustard', 'Горчица', 'grocery', 150, 'банка 150 г', false, 69, 143, 9.9, 5.3, 12.7, { life: 365, grp: 'sauce', role: 'other' }),
+    P('jam', 'Варенье', 'grocery', 400, 'банка 400 г', false, 229, 271, 0.3, 0.1, 68.0, { life: 720, grp: 'sweet', role: 'carb', maxWeek: 200 }),
+    P('granola', 'Гранола / мюсли', 'grain', 400, 'пачка 400 г', false, 259, 410, 9.0, 12.0, 63.0, { life: 240, grp: 'carb_grain', role: 'carb' }),
+    P('ice_cream', 'Мороженое', 'dairy', 400, 'упак. 400 г', false, 239, 232, 3.5, 12.0, 27.0, { life: 180, grp: 'sweet', role: 'fat', maxWeek: 250 }),
+    P('pryaniki', 'Пряники', 'grocery', 350, 'упак. 350 г', false, 129, 364, 4.8, 2.8, 77.0, { life: 180, grp: 'sweet', role: 'carb', maxWeek: 250 }),
+    P('bun_burger', 'Булочки для бургера', 'bakery', 300, 'упак. 4 шт', false, 129, 280, 8.0, 5.0, 50.0, { life: 7, piece: 75, grp: 'bread', role: 'carb' }),
+    P('bouillon_cube', 'Бульонные кубики', 'grocery', 100, 'упак. 100 г', false, 99, 200, 10.0, 12.0, 12.0, { life: 720, grp: 'spice', role: 'other' }),
+
     // ---------- БЫТОВАЯ ХИМИЯ И ГИГИЕНА (без БЖУ, но с ценой) ----------
     P('dish_soap', 'Средство для посуды', 'household', 900, 'бутылка 900 мл', false, 189, 0, 0, 0, 0, { unit: 'ml', life: 720, role: 'nonfood' }),
     P('laundry', 'Гель для стирки', 'household', 1300, 'бутылка 1,3 л', false, 449, 0, 0, 0, 0, { unit: 'ml', life: 720, role: 'nonfood' }),
