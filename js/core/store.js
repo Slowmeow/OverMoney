@@ -369,11 +369,13 @@
      а средство для стирки — раз в полгода; загонять это в «раз в месяц»
      значит завышать бюджет на пустом месте. */
   const PERIODS = {
-    week:     { n: 'шт в неделю',    weeks: 1 },
-    month:    { n: 'шт в месяц',     weeks: 4.3 },
-    quarter:  { n: 'шт в 3 месяца',  weeks: 13 },
-    halfyear: { n: 'шт в полгода',   weeks: 26 },
-    year:     { n: 'шт в год',       weeks: 52 }
+    week:      { n: 'шт в неделю',    weeks: 1 },
+    two_weeks: { n: 'шт в 2 недели',  weeks: 2 },
+    month:     { n: 'шт в месяц',     weeks: 4.3 },
+    two_months:{ n: 'шт в 2 месяца',  weeks: 8.7 },
+    quarter:   { n: 'шт в 3 месяца',  weeks: 13 },
+    halfyear:  { n: 'шт в полгода',   weeks: 26 },
+    year:      { n: 'шт в год',       weeks: 52 }
   };
 
   function periodWeeks(per) {
