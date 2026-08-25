@@ -88,7 +88,9 @@
           text: (leftover ? 'вчерашнее, готовить не надо · ' : meal.recipe.t + ' мин · ') +
             nut.kcal + ' ккал · белок ' + Math.round(nut.p) + ' г' +
             (cost > 0 ? ' · ' + u.money(cost) : '')
-        })
+        }),
+        // Готовим одно блюдо, а нормы разные — значит и в тарелках разное.
+        portionsLine(plan, meal)
       ]),
       h('div.meal-actions', {}, [
         // Передаём координаты приёма пищи, а не ссылки: план могла подменить
@@ -97,6 +99,21 @@
         leftover ? null : u.button('Заменить', () => showAlternatives(di, meal.slot), 'ghost small')
       ])
     ]);
+  }
+
+  /* Кому сколько класть. Показываем только когда едоков больше одного:
+     одному человеку эта строка ничего не сообщает. */
+  function portionsLine(plan, meal) {
+    const u = U(), h = u.h;
+    const parts = P().mealPortions(plan, meal);
+    if (parts.length < 2) return null;
+    return h('span.meal-portions', {}, parts.map(function (x) {
+      return h('span.portion', {}, [
+        h('span.portion-who', { text: x.name }),
+        h('span.portion-amount', { text: '≈' + x.grams + ' г' }),
+        h('span.portion-kcal', { text: x.kcal + ' ккал' })
+      ]);
+    }));
   }
 
   /* Состав блюда — редактируемый: и граммовка, и цена продукта правятся прямо
@@ -181,6 +198,23 @@
       });
 
       body.appendChild(h('div.recipe-grid', {}, cells));
+
+      const parts = P().mealPortions(plan, meal);
+      if (parts.length > 1) {
+        body.appendChild(h('div.portion-box', {}, [
+          h('span.field-label', { text: 'Разложить по тарелкам' }),
+          h('div.portion-list', {}, parts.map(function (x) {
+            return h('div.portion-row', {}, [
+              h('span.portion-who', { text: x.name }),
+              h('span.portion-amount', { text: '≈' + x.grams + ' г' }),
+              h('span.portion-kcal', { text: x.kcal + ' ккал · белок ' + x.p + ' г' }),
+              h('span.portion-share', { text: Math.round(x.share * 100) + '%' })
+            ]);
+          })),
+          h('span.field-hint', { text: 'Вес приблизительный: считается по съедобной части продуктов, ' +
+            'вода в супах в рецепте не указана.' })
+        ]));
+      }
 
       body.appendChild(h('div.recipe-total', {}, [
         h('span.recipe-nut', { text: nut.kcal + ' ккал · Б ' + Math.round(nut.p) + ' · Ж ' + Math.round(nut.f) + ' · У ' + Math.round(nut.c) }),

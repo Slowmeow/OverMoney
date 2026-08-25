@@ -175,7 +175,7 @@
   function estimateMult(recipe, byId, ctx, slot) {
     const nut = N().recipeNutrition(recipe, byId);
     const target = (ctx.slotTargets[slot] || { kcal: 600 }).kcal;
-    return Math.max(0.35, Math.min(3.0, target / Math.max(1, nut.total.kcal)));
+    return Math.max(MULT_MIN, Math.min(MULT_MAX, target / Math.max(1, nut.total.kcal)));
   }
 
   function consumePantry(pantry, recipe, mult) {
@@ -210,12 +210,22 @@
       const t = N().personTargets(person);
       const shares = personShares(person);
       Object.keys(shares).forEach(function (slot) {
-        const bucket = out[slot] || (out[slot] = { kcal: 0, p: 0, f: 0, c: 0, eaters: [] });
+        const bucket = out[slot] || (out[slot] = { kcal: 0, p: 0, f: 0, c: 0, eaters: [], byPerson: [] });
         bucket.kcal += t.kcal * shares[slot];
         bucket.p += t.p * shares[slot];
         bucket.f += t.f * shares[slot];
         bucket.c += t.c * shares[slot];
         bucket.eaters.push(person.name);
+        // Личная доля нужна, чтобы разложить готовое блюдо по тарелкам:
+        // общая цифра на двоих не говорит, кому сколько класть.
+        bucket.byPerson.push({
+          id: person.id,
+          name: person.name,
+          kcal: Math.round(t.kcal * shares[slot]),
+          p: Math.round(t.p * shares[slot]),
+          f: Math.round(t.f * shares[slot]),
+          c: Math.round(t.c * shares[slot])
+        });
       });
     });
     Object.keys(out).forEach(function (slot) {
@@ -231,6 +241,42 @@
      считаем его на лету, чтобы старый план не пришлось выбрасывать. */
   function targetsOf(plan) {
     return plan.slotTargets || slotTargets(S().get().people);
+  }
+
+  /* Разложить готовое блюдо по тарелкам.
+   *
+   * Готовим одно, а нормы у людей разные — значит и порции разные. Здесь
+   * общий вес блюда делится в той же пропорции, в какой относятся личные
+   * калорийные доли этого приёма пищи.
+   *
+   * Вес считается по съедобной части ингредиентов: кожура и обрезь до тарелки
+   * не доходят. Для супов он всё равно занижен — вода в рецепте не указана,
+   * поэтому в интерфейсе цифра подписана как приблизительная. */
+  function mealPortions(plan, meal) {
+    if (!meal || !meal.recipe) return [];
+    const byId = S().productsById();
+    const slot = (targetsOf(plan)[meal.slot]) || null;
+    if (!slot || !slot.byPerson || !slot.byPerson.length) return [];
+
+    const totalWeight = meal.recipe.ing.reduce(function (sum, i) {
+      const p = byId[i.p];
+      return p ? sum + i.g * meal.mult * (1 - (p.wst || 0)) : sum;
+    }, 0);
+
+    const nut = meal.nutrition || N().nutritionOf(
+      meal.recipe.ing.map(i => ({ p: i.p, g: i.g * meal.mult })), byId);
+
+    const slotKcal = slot.kcal || 1;
+    return slot.byPerson.map(function (person) {
+      const share = person.kcal / slotKcal;
+      return {
+        name: person.name,
+        share: share,
+        grams: Math.round(totalWeight * share),
+        kcal: Math.round((nut.kcal || 0) * share),
+        p: Math.round((nut.p || 0) * share)
+      };
+    });
   }
 
   // ---------------------------------------------------------------- сборка
@@ -1057,7 +1103,7 @@
   window.App = window.App || {};
   window.App.planner = {
     generate, rebalance, fitToBudget, hardFit, undoHardFit, budgetLimit, makeCtx, refillEmpty, tuneMacros,
-    slotTargets, targetsOf, personShares,
+    slotTargets, targetsOf, personShares, mealPortions,
     upgradeSuggestions, recipeCost, unitCost, allMeals,
     DAY_NAMES: DAY_NAMES
   };

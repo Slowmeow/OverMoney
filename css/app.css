@@ -580,6 +580,28 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .meal-meta { font-size: var(--text-xs); color: var(--ink-soft); }
 .meal-actions { flex: 0 0 auto; display: flex; gap: var(--space-2); }
 
+/* Кому сколько класть: готовим одно блюдо, а нормы у людей разные. */
+.meal-portions { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-2); }
+.portion { display: inline-flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-2xs); }
+.portion-who { color: var(--ink); font-weight: var(--weight-medium); }
+.portion-amount { color: var(--accent); font-weight: var(--weight-semi); font-variant-numeric: tabular-nums; }
+.portion-kcal { color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+
+.portion-box { display: flex; flex-direction: column; gap: var(--space-3); }
+.portion-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.portion-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1.4fr) 44px;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+.portion-row .portion-amount, .portion-row .portion-kcal { font-size: var(--text-xs); }
+.portion-share { text-align: right; color: var(--ink-faint); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
+
 .alt-list { display: flex; flex-direction: column; gap: var(--space-3); max-height: 55vh; overflow-y: auto; }
 .alt {
   display: grid;
@@ -797,6 +819,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 }
 .slot-chip-name { font-size: var(--text-sm); font-weight: var(--weight-semi); }
 .slot-chip-meta { font-size: var(--text-2xs); color: var(--ink-soft); }
+.slot-chip-total { font-size: var(--text-2xs); color: var(--ink-faint); }
 
 .regulars { display: flex; flex-direction: column; gap: var(--space-3); }
 .regular-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }

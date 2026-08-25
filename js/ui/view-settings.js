@@ -172,9 +172,15 @@
         'Блюдо готовится одно, а порция считается по тем, кто в этом приёме участвует.' }),
       h('div.slot-summary', {}, Object.keys(meals).filter(k => targets[k]).map(function (key) {
         const t = targets[key];
+        // Общая сумма на двоих не говорит, кому сколько класть, — поэтому
+        // разворачиваем норму по людям.
+        const byPerson = (t.byPerson || []).map(x => x.name + ' ' + x.kcal + ' ккал');
         return h('div.slot-chip', {}, [
           h('span.slot-chip-name', { text: meals[key].n }),
-          h('span.slot-chip-meta', { text: t.kcal + ' ккал · ' + t.eaters.join(', ') })
+          h('span.slot-chip-meta', { text: byPerson.join(' · ') || (t.kcal + ' ккал') }),
+          t.byPerson && t.byPerson.length > 1
+            ? h('span.slot-chip-total', { text: 'вместе ' + t.kcal + ' ккал' })
+            : null
         ]);
       })),
       h('div.form-grid', {}, [
