@@ -620,12 +620,13 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .portion-who { color: var(--ink); font-weight: var(--weight-medium); }
 .portion-amount { color: var(--accent); font-weight: var(--weight-semi); font-variant-numeric: tabular-nums; }
 .portion-kcal { color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.portion-cost { color: var(--ink-soft); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
 
 .portion-box { display: flex; flex-direction: column; gap: var(--space-3); }
 .portion-list { display: flex; flex-direction: column; gap: var(--space-2); }
 .portion-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1.4fr) 44px;
+  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1.3fr) 64px 44px;
   align-items: baseline;
   gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
@@ -858,6 +859,25 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .person-formula { color: var(--ink-soft); font-weight: var(--weight-normal); font-size: var(--text-xs); line-height: var(--leading-normal); }
 .person-meals { display: flex; align-items: center; gap: var(--space-5); flex-wrap: wrap; }
 .person-meals .field-label { flex: 0 0 auto; }
+
+.diets { display: flex; flex-direction: column; gap: var(--space-3); }
+.diet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-3); }
+.diet-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.diet-chip:hover { border-color: var(--line-strong); }
+.diet-chip.on { border-color: var(--accent); background: var(--accent-soft); }
+.diet-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+.diet-name { font-size: var(--text-sm); font-weight: var(--weight-semi); }
+.diet-short { font-size: var(--text-2xs); color: var(--ink-soft); }
 
 .slot-summary { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 .slot-chip {

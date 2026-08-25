@@ -78,7 +78,10 @@
 
     const leftover = meal.leftoverOf != null;
     const nut = meal.nutrition || { kcal: 0, p: 0 };
-    const cost = P().recipeCost(meal.recipe, byId, SH().buyMult(meal));
+    // Показываем цену съедаемой порции, а не закупки: тогда сумма по людям
+    // сходится со строкой, а «готовим на два дня» подписано отдельно.
+    const cost = P().recipeCost(meal.recipe, byId, meal.mult);
+    const cooksAhead = !leftover && SH().buyMult(meal) > meal.mult * 1.2;
 
     return h('div.meal' + (leftover ? '.leftover' : ''), {}, [
       h('span.meal-slot', { text: meals[meal.slot].n }),
@@ -86,8 +89,8 @@
         h('span.meal-name', { text: meal.recipe.n }),
         h('span.meal-meta', {
           text: (leftover ? 'вчерашнее, готовить не надо · ' : meal.recipe.t + ' мин · ') +
-            nut.kcal + ' ккал · белок ' + Math.round(nut.p) + ' г' +
-            (cost > 0 ? ' · ' + u.money(cost) : '')
+            nut.kcal + ' ккал · белок ' + Math.round(nut.p) + ' г · ' + u.money(cost) +
+            (cooksAhead ? ' · готовим сразу на два дня' : '')
         }),
         // Готовим одно блюдо, а нормы разные — значит и в тарелках разное.
         portionsLine(plan, meal)
@@ -111,7 +114,8 @@
       return h('span.portion', {}, [
         h('span.portion-who', { text: x.name }),
         h('span.portion-amount', { text: '≈' + x.grams + ' г' }),
-        h('span.portion-kcal', { text: x.kcal + ' ккал' })
+        h('span.portion-kcal', { text: x.kcal + ' ккал' }),
+        h('span.portion-cost', { text: u.money(x.cost) })
       ]);
     }));
   }
@@ -208,11 +212,13 @@
               h('span.portion-who', { text: x.name }),
               h('span.portion-amount', { text: '≈' + x.grams + ' г' }),
               h('span.portion-kcal', { text: x.kcal + ' ккал · белок ' + x.p + ' г' }),
+              h('span.portion-cost', { text: u.money(x.cost) }),
               h('span.portion-share', { text: Math.round(x.share * 100) + '%' })
             ]);
           })),
           h('span.field-hint', { text: 'Вес приблизительный: считается по съедобной части продуктов, ' +
-            'вода в супах в рецепте не указана.' })
+            'вода в супах в рецепте не указана. Цена делится в той же пропорции, ' +
+            'что и порция; изменить её можно, поправив цены продуктов в таблице выше.' })
         ]));
       }
 

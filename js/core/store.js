@@ -18,6 +18,8 @@
       manual: null,
       // Набор приёмов пищи у каждого свой: одному перекусы нужны, другому нет.
       meals: ['breakfast', 'lunch', 'dinner'],
+      // Диетические режимы: гастрит, непереносимости и прочее.
+      diets: [],
       needsSetup: true
     };
   }
@@ -317,14 +319,85 @@
 
   // ---------- РЕЦЕПТЫ ----------
 
-  /* Рецепт отсеивается, если содержит исключённый продукт или выключен вручную. */
+  /* Ограничения домохозяйства — объединение режимов всех едоков.
+   *
+   * Хранятся они у человека, но действуют на общее блюдо: готовим одну
+   * кастрюлю, поэтому если гастрит у одного из двоих, щадящим становится
+   * общий обед. Иначе пришлось бы готовить дважды. */
+  function householdRestrictions() {
+    const ids = [];
+    get().people.forEach(function (p) {
+      (p.diets || []).forEach(function (d) { if (ids.indexOf(d) === -1) ids.push(d); });
+    });
+    return window.App.restrictionsFor ? window.App.restrictionsFor(ids) : { avoid: {}, limit: {}, methods: {} };
+  }
+
+  function activeDiets() {
+    const ids = [];
+    get().people.forEach(function (p) {
+      (p.diets || []).forEach(function (d) { if (ids.indexOf(d) === -1) ids.push(d); });
+    });
+    return ids;
+  }
+
+  /* Какой режим запрещает этот продукт. Возвращает название режима
+     или null — так интерфейс может объяснить, почему продукт пропал. */
+  function blockedBy(product) {
+    const ids = activeDiets();
+    const tags = product.tg || [];
+    for (let i = 0; i < ids.length; i++) {
+      const d = window.App.dietById ? window.App.dietById[ids[i]] : null;
+      if (!d) continue;
+      if (d.avoid.some(t => tags.indexOf(t) !== -1)) return d;
+    }
+    return null;
+  }
+
+  function isProductAllowed(product) {
+    return !blockedBy(product);
+  }
+
+  /* Рецепт отсеивается, если содержит исключённый продукт, выключен вручную
+     или не проходит по диетическому режиму — по продукту либо по способу готовки. */
   function recipes() {
     const s = get();
     const all = window.App.seedRecipes.concat(s.customRecipes || []);
+    const limits = householdRestrictions();
+    const byId = productsById();
+    const rawTags = limits.avoidRaw || {};
+    const hasLimits = Object.keys(limits.avoid).length ||
+      Object.keys(limits.methods).length || Object.keys(rawTags).length;
+
     return all.filter(function (r) {
       if (s.disabledRecipes[r.id]) return false;
-      return !r.ing.some(i => s.excluded[i.p]);
+      if (r.ing.some(i => s.excluded[i.p])) return false;
+      if (!hasLimits) return true;
+
+      if ((r.mth || []).some(m => limits.methods[m])) return false;
+
+      // Грубая клетчатка мешает только сырой: варёная капуста в щах
+      // и та же капуста в салате — разная нагрузка на желудок.
+      const noHeat = (r.mth || ['boil']).every(m => m === 'raw');
+
+      return !r.ing.some(function (i) {
+        const p = byId[i.p];
+        if (!p) return false;
+        const tags = p.tg || [];
+        if (tags.some(t => limits.avoid[t])) return true;
+        return noHeat && tags.some(t => rawTags[t]);
+      });
     });
+  }
+
+  /* Сколько блюд осталось на каждый приём пищи. Если режимы срезали почти всё,
+     об этом надо сказать прямо, а не выдавать неделю из трёх повторов. */
+  function recipeAvailability() {
+    const left = recipes();
+    const out = {};
+    Object.keys(window.App.MEALS).forEach(function (slot) {
+      out[slot] = left.filter(r => r.m.indexOf(slot) !== -1).length;
+    });
+    return out;
   }
 
   function allRecipes() {
@@ -434,7 +507,7 @@
     load, save, get, reset, today, adopt, persist, plan, mealAt,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
-    recipes, allRecipes,
+    recipes, allRecipes, householdRestrictions, activeDiets, blockedBy, isProductAllowed, recipeAvailability,
     pantryAdd, pantrySet,
     weeklyBudget, regularsWeeklyCost, PERIODS, periodWeeks,
     dismissSwap, restoreSwaps,

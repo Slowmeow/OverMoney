@@ -4,7 +4,7 @@
 
   /* Показывается в подвале. Если после обновления цифра не изменилась —
      браузер отдал страницу из кеша, и правок вы не увидите. */
-  const APP_VERSION = '1.2';
+  const APP_VERSION = '1.3';
 
   const ORDER = ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings'];
   let current = 'dashboard';

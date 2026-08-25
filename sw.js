@@ -3,13 +3,14 @@
 /* Номер меняется при каждом обновлении файлов: при активации нового
    service worker старый кеш целиком удаляется, поэтому в браузере
    не может остаться половина старой версии приложения. */
-const CACHE = 'spendings-v10';
+const CACHE = 'spendings-v11';
 
 const ASSETS = [
   './',
   'index.html',
   'css/app.css',
   'js/data/products.js',
+  'js/data/diets.js',
   'js/data/recipes.js',
   'js/core/nutrition.js',
   'js/core/sync.js',

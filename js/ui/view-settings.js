@@ -133,6 +133,7 @@
           ]);
         }))
       ]),
+      dietsBlock(person),
       h('label.checkline', {}, [
         h('input', {
           type: 'checkbox', checked: manual,
@@ -158,6 +159,60 @@
         })
       ])
     ]);
+  }
+
+  /* Диетические режимы человека.
+   *
+   * Сознательно отделены от «не предлагать этот продукт»: там личный вкус,
+   * здесь — ограничение по здоровью, у которого есть причина и последствия.
+   * Поэтому у каждого режима видно, что именно он убирает и почему. */
+  function dietsBlock(person) {
+    const u = U(), h = u.h;
+    const chosen = person.diets || [];
+
+    return h('div.diets', {}, [
+      h('span.field-label', { text: 'Ограничения по здоровью и диеты' }),
+      h('div.diet-grid', {}, window.App.DIETS.map(function (d) {
+        const on = chosen.indexOf(d.id) !== -1;
+        return h('label.diet-chip' + (on ? '.on' : ''), {}, [
+          h('input', {
+            type: 'checkbox', checked: on,
+            onchange: function (e) {
+              const list = (person.diets || []).slice();
+              person.diets = e.target.checked
+                ? list.concat([d.id])
+                : list.filter(x => x !== d.id);
+              S().save();
+              window.App.ui.refresh();
+            }
+          }),
+          h('span.diet-main', {}, [
+            h('span.diet-name', { text: d.n }),
+            h('span.diet-short', { text: d.short })
+          ]),
+          u.button('?', function () { explainDiet(d); }, 'ghost small')
+        ]);
+      })),
+      chosen.length ? h('p.field-hint', {
+        text: 'Готовим одно блюдо на всех, поэтому ограничения этого профиля действуют ' +
+          'на общее меню — иначе пришлось бы готовить дважды.'
+      }) : null
+    ]);
+  }
+
+  function explainDiet(d) {
+    const u = U(), h = u.h;
+    u.modal(d.n, [
+      h('p', { text: d.why }),
+      h('p.hint', { text: d.note }),
+      h('div.note', {}, [
+        h('p', { text: 'Это фильтр продуктов, а не лечение.' }),
+        h('p', { text: 'Приложение убирает из меню то, что при этом состоянии обычно ограничивают, ' +
+          'и не более того. Оно не ставит диагноз, не знает форму и стадию вашего заболевания ' +
+          'и не заменяет врача. Если врач разрешил или запретил что-то иначе — поправьте список ' +
+          'вручную на вкладке «Цены» галочкой «не предлагать».' })
+      ])
+    ], [{ label: 'Понятно', cls: 'primary' }]);
   }
 
   function modeCard() {

@@ -31,6 +31,23 @@
         'Заполнить', () => window.App.ui.go('settings')));
     }
 
+    // Диета может срезать столько блюд, что неделя выродится в три повтора.
+    // Сказать об этом надо заранее, а не показывать скудное меню молча.
+    const diets = S().activeDiets();
+    if (diets.length) {
+      const left = S().recipeAvailability();
+      const thin = Object.keys(left).filter(function (slot) {
+        const eats = state.people.some(p => (p.meals || []).indexOf(slot) !== -1);
+        return eats && left[slot] < 6;
+      });
+      if (thin.length) {
+        const names = thin.map(s2 => window.App.MEALS[s2].n.toLowerCase()).join(', ');
+        items.push(warn('Ограничения оставили мало вариантов: ' + names +
+          '. Меню будет однообразным — снимите часть запретов или добавьте свои рецепты.',
+          'К ограничениям', () => window.App.ui.go('settings')));
+      }
+    }
+
     const stale = S().products().filter(p => S().isStale(p) && !state.excluded[p.id]);
     if (stale.length) {
       items.push(warn('Цены не проверены: ' + stale.length + ' поз. Пока это оценка, а не ваш чек.',

@@ -279,6 +279,11 @@
     const nut = meal.nutrition || N().nutritionOf(
       meal.recipe.ing.map(i => ({ p: i.p, g: i.g * meal.mult })), byId);
 
+    // Стоимость именно этой тарелки: берём порцию, которую сегодня едят,
+    // а не закупку. У блюда, сваренного на два дня, закупка вдвое больше,
+    // и делить её между сегодняшними едоками было бы неверно.
+    const mealCost = recipeCost(meal.recipe, byId, meal.mult);
+
     const slotKcal = slot.kcal || 1;
     return slot.byPerson.map(function (person) {
       const share = person.kcal / slotKcal;
@@ -287,7 +292,8 @@
         share: share,
         grams: Math.round(totalWeight * share),
         kcal: Math.round((nut.kcal || 0) * share),
-        p: Math.round((nut.p || 0) * share)
+        p: Math.round((nut.p || 0) * share),
+        cost: mealCost * share
       };
     });
   }
@@ -728,7 +734,10 @@
     const base = unitCost(product, role);
 
     return S().products()
-      .filter(p => p.grp === product.grp && p.id !== product.id && !excluded[p.id])
+      // Диета запрещает не только блюда, но и подстановку продукта в замену:
+      // иначе оптимизатор вернул бы копчёности в щадящее меню через чёрный ход.
+      .filter(p => p.grp === product.grp && p.id !== product.id && !excluded[p.id] &&
+        S().isProductAllowed(p))
       .map(p => ({ p: p, cost: unitCost(p, role) }))
       .filter(c => c.cost < base * 0.95 && isFinite(c.cost))
       .sort((a, b) => a.cost - b.cost);
