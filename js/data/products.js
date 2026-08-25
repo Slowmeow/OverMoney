@@ -124,6 +124,9 @@
     P('salt', 'Соль', 'grocery', 1000, 'пачка 1 кг', false, 25, 0, 0, 0, 0, { life: 1800, grp: 'spice', role: 'other' }),
     P('honey', 'Мёд', 'grocery', 250, 'банка 250 г', false, 249, 329, 0.8, 0, 81.5, { life: 720, grp: 'sweet', role: 'carb', maxWeek: 120 }),
     P('peanut_butter', 'Паста арахисовая', 'grocery', 300, 'банка 300 г', false, 279, 588, 25.0, 50.0, 12.0, { life: 240, grp: 'nuts', role: 'fat', maxWeek: 160 }),
+    // Изолят соевого белка: почти чистый белок, поэтому в смузи он даёт норму
+    // дёшево там, где мясом это стоило бы втрое дороже.
+    P('soy_protein', 'Протеин соевый (изолят)', 'grocery', 900, 'банка 900 г', false, 1190, 370, 90.0, 0.5, 1.0, { life: 540, grp: 'prot_dairy', role: 'protein', maxWeek: 300 }),
     P('peanuts', 'Арахис', 'grocery', 200, 'пачка 200 г', false, 99, 567, 26.3, 45.2, 9.9, { life: 180, grp: 'nuts', role: 'fat', maxWeek: 200 }),
     P('walnuts', 'Грецкий орех', 'grocery', 200, 'пачка 200 г', false, 249, 654, 15.2, 65.2, 7.0, { life: 180, grp: 'nuts', role: 'fat', maxWeek: 160 }),
     P('yeast_dry', 'Дрожжи сухие', 'grocery', 100, 'упак. 100 г', false, 79, 325, 40.0, 6.0, 30.0, { life: 365, grp: 'spice', role: 'other' }),

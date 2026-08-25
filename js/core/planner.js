@@ -256,14 +256,15 @@
       score += pantryCover(r, byId, pantry, 1) * 1.5;      // доесть скоропорт из кладовой
       // Вес 5 выбран замером: перебор значений от 2,5 до 10 на восьми прогонах
       // дал здесь лучшую среднюю стоимость недели при сохранении разнообразия.
-      score -= (costs[idx] / (medianCost || 1)) * 5.0;     // дешевле по остатку — решающий фактор
-      score -= (usage[r.id] || 0) * 1.5;                   // не приедаться
+      // В режиме экономии цена перевешивает всё остальное.
+      score -= (costs[idx] / (medianCost || 1)) * (ctx.costFocus ? 12.0 : 5.0);
+      score -= (usage[r.id] || 0) * (ctx.costFocus ? 0.4 : 1.5);   // на жёстком бюджете повторы допустимы
       if (r.t > 50) score -= 0.4;                          // долгие рецепты реже
       if (ctx.proteinDeficit) {
         const nut = N().recipeNutrition(r, byId);
         score += Math.min(1.2, nut.total.p / Math.max(1, nut.total.kcal) * 60);
       }
-      score += Math.random() * 0.4;                        // чтобы неделя не повторялась дословно
+      score += Math.random() * (ctx.costFocus ? 0.15 : 0.4);       // чтобы неделя не повторялась дословно
       return { r: r, score: score };
     });
 
@@ -409,11 +410,14 @@
     return filled;
   }
 
-  function generate() {
+  function generate(opts) {
     const state = S().get();
     const settings = state.settings;
     const ctx = makeCtx();
     const byId = ctx.byId;
+    // Режим экономии: цена перевешивает разнообразие, а состав макронутриентов
+    // сдвигается к дешёвым калориям. Включается только жёсткой подгонкой.
+    ctx.costFocus = !!(opts && opts.costFocus);
 
     const plan = buildSkeleton(settings, state.people);
 
@@ -448,8 +452,43 @@
     refillEmpty(plan, ctx, byId);
     fixProtein(plan, byId, ctx);
     tuneMacros(plan, byId);
+    if (ctx.costFocus) tuneForCost(plan, byId, settings.proteinFloor);
     fitToBudget(plan, byId, ctx);
     return plan;
+  }
+
+  /* Обменять белок на углеводы при тех же калориях.
+   *
+   * Само по себе снижение порога белка почти ничего не даёт: порог — это
+   * запрет, а не цель, и планировщик всё равно набирает 100% нормы. Экономия
+   * появляется, только если рацион сознательно сдвинуть к дешёвым калориям:
+   * грамм белка из мяса стоит в разы дороже грамма углеводов из крупы.
+   * Опускаемся ровно до разрешённой границы и ни граммом ниже. */
+  function tuneForCost(plan, byId, floorRatio) {
+    for (let step = 0; step < 10; step++) {
+      const w = plan.nutrition.week, t = plan.targets.week;
+      if (w.p <= t.p * (floorRatio + 0.02)) return;
+
+      const snap = snapshot(plan);
+      plan.days.forEach(function (day) {
+        day.meals.forEach(function (meal) {
+          if (!meal.recipe) return;
+          meal.recipe.ing.forEach(function (i) {
+            const p = byId[i.p];
+            if (!p) return;
+            if (p.role === 'protein' && i.g > 20) i.g = Math.round(i.g * 0.92);
+            else if (p.role === 'carb') i.g = Math.round(i.g * 1.06);
+          });
+        });
+      });
+      rebalance(plan, byId);
+
+      if (plan.nutrition.week.p < t.p * floorRatio) {
+        restore(plan, snap);
+        rebalance(plan, byId);
+        return;
+      }
+    }
   }
 
   /* Калории после rebalance всегда попадают в цель, а вот их состав — нет:
@@ -784,6 +823,123 @@
     return plan;
   }
 
+  /* Жёсткая подгонка «во что бы то ни стало».
+   *
+   * Обычная подгонка отказывается резать белок ниже установленного порога —
+   * и это правильное поведение по умолчанию. Но иногда денег просто нет,
+   * и человек сознательно готов на компромисс. Тогда ограничения снимаются
+   * ступенями, от самых безобидных к болезненным, и подгонка останавливается
+   * на первой ступени, где план влез в бюджет.
+   *
+   * Чего эта функция не делает никогда: не опускает белок ниже 0,8 г на кг
+   * массы тела и калории ниже 1200 у женщин и 1500 у мужчин. Это не настройка
+   * бюджета, а граница, за которой начинается вред здоровью, поэтому вместо
+   * красивой цифры приложение честно скажет, что уложиться нельзя.
+   */
+  function hardFit(plan) {
+    const state = S().get();
+    const settings = state.settings;
+    const ctx = makeCtx();
+    const byId = ctx.byId;
+    const limit = budgetLimit();
+
+    const original = { proteinFloor: settings.proteinFloor, maxRepeat: settings.maxRepeat };
+    plan.compromises = [];
+
+    // Абсолютный минимум белка: 0,8 г/кг — рекомендуемая норма ВОЗ,
+    // ниже неё начинается потеря мышц, а не экономия.
+    const safeProteinWeek = state.people.reduce((sum, p) => sum + p.weight * 0.8, 0) * 7;
+    const floorRatio = Math.max(0.5, Math.min(0.9, safeProteinWeek / Math.max(1, plan.targets.week.p)));
+
+    const stages = [
+      { floor: original.proteinFloor, repeat: Math.max(original.maxRepeat, 3) },
+      { floor: 0.85, repeat: Math.max(original.maxRepeat, 4) },
+      { floor: 0.80, repeat: 5 },
+      { floor: floorRatio, repeat: 7 }
+    ];
+
+    // Подбор блюд случаен, поэтому один прогон ничего не доказывает: берём
+    // несколько попыток и оставляем самую дешёвую. Иначе жёсткая подгонка
+    // иногда выдавала результат хуже исходного плана.
+    const ATTEMPTS = 3;
+    let best = null;
+
+    for (let i = 0; i < stages.length; i++) {
+      const stage = stages[i];
+      if (stage.floor < floorRatio) continue;              // ниже безопасного не опускаемся
+
+      settings.proteinFloor = stage.floor;
+      settings.maxRepeat = stage.repeat;
+
+      for (let a = 0; a < ATTEMPTS; a++) {
+        // Пересобираем с нуля в режиме экономии: на жёстком бюджете важен сам
+        // набор блюд, а не косметические замены в уже собранном меню.
+        const attempt = generate({ costFocus: true });
+        if (!best || attempt.cost < best.cost) best = attempt;
+        if (best.cost <= limit.allowed) break;
+      }
+      if (best && best.cost <= limit.allowed) break;
+    }
+
+    settings.proteinFloor = original.proteinFloor;
+    settings.maxRepeat = original.maxRepeat;
+
+    // Если ослабление не помогло, исходный план всё равно не портим.
+    if (best && best.cost < plan.cost) {
+      plan.days = best.days;
+      plan.slotTargets = best.slotTargets;
+      plan.targets = best.targets;
+      plan.nutrition = best.nutrition;
+      plan.swaps = best.swaps;
+      plan.replacements = best.replacements;
+      plan.notes = best.notes;
+      plan.cost = best.cost;
+      plan.budget = best.budget;
+    }
+
+    const fitted = plan.cost <= limit.allowed;
+    const w = plan.nutrition.week, t = plan.targets.week;
+    const proteinShare = Math.round(w.p / t.p * 100);
+
+    // Отчитываемся по тому, что получилось на самом деле, а не по названию
+    // ступени, до которой дошли: иначе сообщение врёт.
+    if (proteinShare < 97) plan.compromises.push('белок снижен до ' + proteinShare + '% нормы');
+
+    // Считаем повторы по готовому меню, а не по настройке: настройка к этому
+    // моменту уже возвращена к исходной и сказала бы неправду.
+    const used = {};
+    allMeals(plan).forEach(function (m) {
+      if (m.recipe) used[m.recipe.id] = (used[m.recipe.id] || 0) + 1;
+    });
+    const mostRepeated = Object.keys(used).reduce((n, k) => Math.max(n, used[k]), 0);
+    if (mostRepeated > original.maxRepeat) {
+      plan.compromises.push('одно блюдо повторяется до ' + mostRepeated + ' раз за неделю вместо ' + original.maxRepeat);
+    }
+    if (Math.round(w.c / t.c * 100) > 105) {
+      plan.compromises.push('рацион сдвинут к крупам и хлебу — это самые дешёвые калории');
+    }
+
+    plan.hardFit = {
+      fitted: fitted,
+      cost: plan.cost,
+      limit: Math.round(limit.allowed),
+      proteinShare: proteinShare,
+      kcalShare: Math.round(w.kcal / t.kcal * 100),
+      compromises: plan.compromises
+    };
+
+    if (!fitted) {
+      plan.notes = plan.notes || [];
+      plan.notes.push('Даже с ослабленными требованиями план не влезает: не хватает ' +
+        Math.round(plan.cost - limit.allowed) + ' ₽ в неделю. Дальше резать нельзя — ' +
+        'белок уже на нижней безопасной границе. Это не ограничение приложения, ' +
+        'а арифметика: столько еды за эти деньги в ваших магазинах не купить.');
+    }
+
+    S().save();
+    return plan;
+  }
+
   /* Если бюджет остался — куда его осмысленно потратить.
      Ничего не меняем автоматически: это предложения, решает человек. */
   function upgradeSuggestions(plan) {
@@ -822,7 +978,7 @@
 
   window.App = window.App || {};
   window.App.planner = {
-    generate, rebalance, fitToBudget, budgetLimit, makeCtx, refillEmpty, tuneMacros,
+    generate, rebalance, fitToBudget, hardFit, budgetLimit, makeCtx, refillEmpty, tuneMacros,
     slotTargets, targetsOf, personShares,
     upgradeSuggestions, recipeCost, unitCost, allMeals,
     DAY_NAMES: DAY_NAMES

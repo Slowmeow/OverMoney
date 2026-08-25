@@ -100,7 +100,8 @@
         'это сумма в кассе, а не сумма граммов из рецептов.' }),
       plan.notes.length ? h('div.note', {}, plan.notes.map(n => h('p', { text: n }))) : null,
       h('div.row-actions', {}, [
-        u.button('Открыть список покупок', () => window.App.ui.go('list'), 'primary'),
+        u.hardFitButton(),
+        u.button('Открыть список покупок', () => window.App.ui.go('list'), over ? null : 'primary'),
         u.button('Посмотреть меню', () => window.App.ui.go('week')),
         u.button('Пересобрать неделю', () => window.App.ui.generate())
       ]),

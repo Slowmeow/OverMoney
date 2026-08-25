@@ -135,8 +135,57 @@
     return { close: close, el: overlay };
   }
 
+  /* Жёсткая подгонка под бюджет: одна кнопка на всех экранах, где видна
+     нехватка. Результат показываем целиком — и сколько получилось,
+     и чем за это заплатили. */
+  function hardFitButton() {
+    const store = window.App.store;
+    const plan = store.get().plan;
+    if (!plan) return null;
+
+    const limit = plan.budget ? plan.budget.food : store.weeklyBudget().food;
+    if (plan.cost <= limit) return null;
+
+    return button('Подстроить жёстко под бюджет', function () {
+      const updated = window.App.planner.hardFit(plan);
+      window.App.ui.refresh();
+      showHardFitResult(updated);
+    }, 'primary');
+  }
+
+  function showHardFitResult(plan) {
+    const r = plan.hardFit || {};
+    const lines = [];
+
+    if (r.fitted) {
+      lines.push(h('p', { text: 'Уложились: ' + money(r.cost) + ' при бюджете ' + money(r.limit) + '.' }));
+    } else {
+      lines.push(h('p', { text: 'Уложиться не удалось даже с ослабленными требованиями: ' +
+        money(r.cost) + ' против ' + money(r.limit) + '.' }));
+    }
+
+    if (r.compromises && r.compromises.length) {
+      lines.push(h('p.hint', { text: 'Чем пришлось пожертвовать:' }));
+      lines.push(h('ul.plain', {}, r.compromises.map(c => h('li', { text: c }))));
+    } else if (r.fitted) {
+      lines.push(h('p.hint', { text: 'Ничем жертвовать не пришлось — хватило пересборки меню.' }));
+    }
+
+    lines.push(h('p.hint', {
+      text: 'Итог по неделе: калории ' + r.kcalShare + '% нормы, белок ' + r.proteinShare + '%.'
+    }));
+
+    if (!r.fitted) {
+      lines.push(h('p.hint', { text: 'Ниже приложение не опускается сознательно: белок уже на границе ' +
+        '0,8 г на кг веса, а это рекомендуемый минимум, а не место для экономии.' }));
+    }
+
+    modal(r.fitted ? 'Подстроено под бюджет' : 'Бюджета не хватает', lines, [{ label: 'Понятно' }]);
+  }
+
   window.App = window.App || {};
   window.App.ui = Object.assign(window.App.ui || {}, {
-    h, money, num, signedPct, card, field, input, numberInput, select, button, bar, toast, modal
+    h, money, num, signedPct, card, field, input, numberInput, select, button, bar, toast, modal,
+    hardFitButton, showHardFitResult
   });
 })();
