@@ -35,15 +35,14 @@
           h('span.week-cost' + (over ? '.over' : ''), { text: u.money(plan.cost) }),
           h('span.week-cap', { text: ' из ' + u.money(limit) + ' на неделю' })
         ]),
+        /* Раньше здесь была своя кнопка «Подогнать под бюджет». Она запускала
+           мягкую подгонку повторно — а та уже отработала при сборке плана,
+           поэтому находила от силы несколько десятков рублей и выглядела
+           сломанной. При этом сообщение всегда рапортовало об успехе.
+           Теперь на всех экранах один и тот же набор действий. */
         h('div.row-actions', {}, [
           u.button('Пересобрать', () => window.App.ui.generate()),
-          over ? u.button('Подогнать под бюджет', function () {
-            const live = S().plan();
-            if (!live) return;
-            P().fitToBudget(live, S().productsById());
-            savePlan(live);
-            u.toast('Пересчитано под бюджет');
-          }, 'primary') : null
+          u.budgetActions()
         ])
       ])
     ]);
@@ -118,19 +117,32 @@
       const cost = P().recipeCost(meal.recipe, byId, SH().buyMult(meal));
 
       body.appendChild(h('p.hint', {
-        text: 'Порции пересчитаны под вашу норму: коэффициент ×' + mult + ' от базового рецепта. ' +
-          'Правьте граммы и цены — итог пересчитается сразу.'
+        text: 'Порции пересчитаны под вашу норму: коэффициент ×' + u.num(mult, 2) +
+          ' от базового рецепта. Правьте количество и цену — итог пересчитается сразу.'
       }));
 
-      body.appendChild(h('div.recipe-rows', {}, meal.recipe.ing.map(function (ing, idx) {
-        const p = byId[ing.p];
-        if (!p) return null;
-        const grams = ing.g * mult;
+      /* Таблица, а не набор карточек: подписи вроде «₽ / бутылка 900 мл»
+         у каждой строки своей длины, и поля разъезжались по горизонтали.
+         Одна шапка на всю таблицу выравнивает колонки и заодно освобождает
+         место — размер упаковки ушёл в строку под названием. */
+      const cells = [
+        h('span.rg-head', { text: 'Продукт' }),
+        h('span.rg-head.rg-num', { text: 'Нужно' }),
+        h('span.rg-head.rg-num', { text: 'Цена, ₽' }),
+        h('span.rg-head')
+      ];
 
-        // Граммы правим в том виде, в каком они на экране, а храним базовые:
+      meal.recipe.ing.forEach(function (ing, idx) {
+        const p = byId[ing.p];
+        if (!p) return;
+        const grams = ing.g * mult;
+        const unit = p.unit === 'ml' ? 'мл' : 'г';
+
+        // Количество правим в том виде, в каком оно на экране, а храним базовое:
         // иначе пользователю пришлось бы делить в уме на коэффициент.
-        const gramsInput = h('input.input.small-input', {
+        const gramsInput = h('input.input.rg-input', {
           type: 'number', value: Math.round(grams), min: '0', step: '5',
+          'aria-label': 'Сколько нужно, ' + unit + ': ' + p.n,
           onchange: function (e) {
             const value = Math.max(0, parseFloat(e.target.value) || 0);
             meal.recipe.ing[idx].g = mult > 0 ? value / mult : value;
@@ -138,8 +150,9 @@
           }
         });
 
-        const priceInput = h('input.input.price-input', {
+        const priceInput = h('input.input.rg-input', {
           type: 'number', value: p.pr, min: '0', step: '1',
+          'aria-label': 'Цена за ' + p.pl + ': ' + p.n,
           onchange: function (e) {
             const value = parseFloat(e.target.value);
             if (!(value > 0)) return;
@@ -150,25 +163,27 @@
           }
         });
 
-        return h('div.recipe-row', {}, [
-          h('div.recipe-main', {}, [
+        cells.push(
+          h('div.rg-name', {}, [
             h('span.recipe-name', { text: p.n }),
             h('span.recipe-meta', {
-              text: SH().formatAmount(p, grams) + ' · ' + u.money(grams * S().pricePerBase(p)) +
+              text: u.money(grams * S().pricePerBase(p)) + ' · ' + p.pl +
                 (p.brand ? ' · ' + p.brand : '')
             })
           ]),
-          h('label.mini-field', {}, [h('span', { text: p.unit === 'ml' ? 'мл' : 'г' }), gramsInput]),
-          h('label.mini-field', {}, [h('span', { text: '₽ / ' + p.pl }), priceInput]),
+          h('div.rg-field', {}, [gramsInput, h('span.rg-unit', { text: unit })]),
+          h('div.rg-field', {}, priceInput),
           u.button('✕', function () {
             meal.recipe.ing.splice(idx, 1);
             commit();
-          }, 'ghost small')
-        ]);
-      }).filter(Boolean)));
+          }, 'ghost small rg-drop')
+        );
+      });
+
+      body.appendChild(h('div.recipe-grid', {}, cells));
 
       body.appendChild(h('div.recipe-total', {}, [
-        h('span', { text: nut.kcal + ' ккал · Б ' + Math.round(nut.p) + ' · Ж ' + Math.round(nut.f) + ' · У ' + Math.round(nut.c) }),
+        h('span.recipe-nut', { text: nut.kcal + ' ккал · Б ' + Math.round(nut.p) + ' · Ж ' + Math.round(nut.f) + ' · У ' + Math.round(nut.c) }),
         h('span.recipe-cost', { text: u.money(cost) })
       ]));
 

@@ -605,31 +605,64 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 /* ================= редактор состава ================= */
 
 .recipe-edit { display: flex; flex-direction: column; gap: var(--space-5); }
-.recipe-rows { display: flex; flex-direction: column; gap: var(--space-3); }
-.recipe-row {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
+
+/* Состав — таблица с одной шапкой, а не набор карточек с подписью над каждым
+   полем: подписи вроде «₽ / бутылка 900 мл» у каждой строки своей длины,
+   и поля разъезжались по горизонтали. Общая сетка держит колонки на месте. */
+.recipe-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 96px 32px;
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: 0;
 }
-.recipe-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+
+.rg-head {
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+  font-weight: var(--weight-medium);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.rg-head.rg-num { text-align: right; }
+
+.recipe-grid > .rg-name,
+.recipe-grid > .rg-field,
+.recipe-grid > .rg-drop {
+  border-bottom: 1px solid var(--line);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+/* Последняя строка без линии — она упирается в итог, у которого своя. */
+.recipe-grid > *:nth-last-child(-n + 4) { border-bottom: 0; }
+
+.rg-name { display: flex; flex-direction: column; min-width: 0; gap: var(--space-1); }
 .recipe-name { font-weight: var(--weight-semi); font-size: var(--text-sm); }
 .recipe-meta { font-size: var(--text-2xs); color: var(--ink-soft); }
-.mini-field { display: flex; flex-direction: column; gap: var(--space-1); flex: 0 0 auto; }
-.mini-field span { font-size: var(--text-2xs); color: var(--ink-faint); white-space: nowrap; }
-.mini-field .input { width: 76px; text-align: right; padding: var(--space-3) var(--space-4); }
+
+.rg-field { display: flex; align-items: center; gap: var(--space-2); }
+.rg-input {
+  width: 100%;
+  text-align: right;
+  padding: var(--space-3) var(--space-4);
+  font-variant-numeric: tabular-nums;
+}
+/* Единица прижата к полю справа и не занимает колонку: она короткая
+   и одинаковая внутри строки. */
+.rg-unit { font-size: var(--text-2xs); color: var(--ink-faint); width: 20px; flex: 0 0 auto; }
+.rg-drop { justify-self: end; }
 
 .recipe-total {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: var(--space-5);
   font-size: var(--text-sm);
   padding-top: var(--space-4);
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-strong);
 }
-.recipe-cost { font-weight: var(--weight-semi); font-variant-numeric: tabular-nums; }
+.recipe-nut { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.recipe-cost { font-weight: var(--weight-semi); font-variant-numeric: tabular-nums; font-size: var(--text-md); }
 
 .candidate-btn {
   display: block;
@@ -983,5 +1016,6 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   .item-price { flex-direction: row; align-items: center; gap: var(--space-4); }
   .price-edit span { display: none; }
   .big-num { font-size: var(--text-2xl); }
-  .recipe-row { flex-wrap: wrap; }
+  .recipe-grid { grid-template-columns: minmax(0, 1fr) 74px 74px 28px; column-gap: var(--space-3); }
+  .rg-input { padding: var(--space-3); }
 }

@@ -33,6 +33,22 @@
   const MAX_SWAPS = 8;
   const URGENT_GAP_SHARE = 0.12;   // разрыв больше 12% стоимости — режим экономии
 
+  /* Границы масштабирования порции.
+   *
+   * Нижняя граница была 0,35 — и это ломало день. Рецепт на четыре порции,
+   * попавший в перекус, требует коэффициента около 0,2; упираясь в 0,35,
+   * он выдавал 831 ккал вместо 444, и день уезжал на девять процентов вверх.
+   * Планировщик при этом считал, что попал в норму.
+   *
+   * Ниже 0,2 не опускаемся уже по здравому смыслу: «пятая часть кастрюли»
+   * ещё осмысленна, «двадцатая» — нет. Поэтому вторая половина решения —
+   * штраф в подборе, чтобы блюда с неудобным масштабом просто реже попадали
+   * в такие слоты. */
+  const MULT_MIN = 0.2;
+  const MULT_MAX = 3.2;
+  const MULT_COMFORT_LOW = 0.4;
+  const MULT_COMFORT_HIGH = 2.5;
+
   function swapThreshold(cost, gap) {
     const urgent = gap > cost * URGENT_GAP_SHARE;
     return {
@@ -260,6 +276,15 @@
       score -= (costs[idx] / (medianCost || 1)) * (ctx.costFocus ? 12.0 : 5.0);
       score -= (usage[r.id] || 0) * (ctx.costFocus ? 0.4 : 1.5);   // на жёстком бюджете повторы допустимы
       if (r.t > 50) score -= 0.4;                          // долгие рецепты реже
+
+      // Блюдо, которое под этот приём пищи приходится сжимать впятеро или
+      // растягивать втрое, здесь не к месту: даже уложившись в границы,
+      // оно даёт неестественную порцию и уводит день от нормы.
+      const fitNut = N().recipeNutrition(r, byId);
+      const ideal = slotKcal / Math.max(1, fitNut.total.kcal);
+      if (ideal < MULT_COMFORT_LOW) score -= (MULT_COMFORT_LOW - ideal) * 6;
+      else if (ideal > MULT_COMFORT_HIGH) score -= (ideal - MULT_COMFORT_HIGH) * 1.5;
+
       if (ctx.proteinDeficit) {
         const nut = N().recipeNutrition(r, byId);
         score += Math.min(1.2, nut.total.p / Math.max(1, nut.total.kcal) * 60);
@@ -291,7 +316,7 @@
         const targetKcal = (targets[meal.slot] || { kcal: 0 }).kcal;
         const total = nut.total.kcal || 1;
         let mult = targetKcal / total;
-        mult = Math.max(0.35, Math.min(3.0, mult));
+        mult = Math.max(MULT_MIN, Math.min(MULT_MAX, mult));
         meal.mult = Math.round(mult * 100) / 100;
       });
     });
