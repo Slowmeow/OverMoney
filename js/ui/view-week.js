@@ -38,8 +38,10 @@
         h('div.row-actions', {}, [
           u.button('Пересобрать', () => window.App.ui.generate()),
           over ? u.button('Подогнать под бюджет', function () {
-            P().fitToBudget(plan, S().productsById());
-            savePlan(plan);
+            const live = S().plan();
+            if (!live) return;
+            P().fitToBudget(live, S().productsById());
+            savePlan(live);
             u.toast('Пересчитано под бюджет');
           }, 'primary') : null
         ])
@@ -90,8 +92,10 @@
         })
       ]),
       h('div.meal-actions', {}, [
-        u.button('Состав', () => showRecipe(meal, byId, plan), 'ghost small'),
-        leftover ? null : u.button('Заменить', () => showAlternatives(plan, meal, di, byId), 'ghost small')
+        // Передаём координаты приёма пищи, а не ссылки: план могла подменить
+        // синхронизация, и старая ссылка вела бы в отброшенный объект.
+        u.button('Состав', () => showRecipe(di, meal.slot), 'ghost small'),
+        leftover ? null : u.button('Заменить', () => showAlternatives(di, meal.slot), 'ghost small')
       ])
     ]);
   }
@@ -99,8 +103,12 @@
   /* Состав блюда — редактируемый: и граммовка, и цена продукта правятся прямо
      здесь. Без этого пришлось бы уходить на другой экран ради одной цифры,
      а увидеть результат — только вернувшись обратно. */
-  function showRecipe(meal, byId, plan) {
+  function showRecipe(dayIndex, slot) {
     const u = U(), h = u.h;
+    let byId = S().productsById();
+    const plan = S().plan();
+    const meal = S().mealAt(dayIndex, slot);
+    if (!plan || !meal || !meal.recipe) return;
     const body = h('div.recipe-edit');
 
     function draw() {
@@ -220,8 +228,13 @@
     ]);
   }
 
-  function showAlternatives(plan, meal, di, byId) {
+  function showAlternatives(dayIndex, slot) {
     const u = U(), h = u.h;
+    const byId = S().productsById();
+    const plan = S().plan();
+    const meal = S().mealAt(dayIndex, slot);
+    if (!plan || !meal || !meal.recipe) return;
+    const di = dayIndex;
     const alternatives = S().recipes()
       .filter(r => r.m.indexOf(meal.slot) !== -1 && r.id !== meal.recipe.id)
       .map(function (r) {
@@ -239,7 +252,7 @@
       return h('button.alt', {
         type: 'button',
         onclick: function () {
-          applyReplacement(plan, meal, di, a.r, byId);
+          applyReplacement(dayIndex, slot, a.r);
           document.querySelectorAll('.modal-overlay').forEach(el => el.remove());
         }
       }, [
@@ -260,8 +273,13 @@
     ], [{ label: 'Отмена' }]);
   }
 
-  function applyReplacement(plan, meal, di, recipe, byId) {
+  function applyReplacement(dayIndex, slot, recipe) {
     const u = U();
+    const byId = S().productsById();
+    const plan = S().plan();
+    const meal = S().mealAt(dayIndex, slot);
+    if (!plan || !meal) return;
+    const di = dayIndex;
     // Если у блюда был второй день — снимаем его, иначе останется висеть вчерашнее.
     plan.days.forEach(function (day) {
       day.meals.forEach(function (m) {

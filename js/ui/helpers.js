@@ -139,7 +139,7 @@
      Компромисс обратим — после жёсткой подгонки рядом всегда стоит выход обратно. */
   function budgetActions() {
     const store = window.App.store;
-    const plan = store.get().plan;
+    const plan = store.plan();
     if (!plan) return [];
 
     const limit = plan.budget ? plan.budget.food : store.weeklyBudget().food;
@@ -147,16 +147,25 @@
 
     if (plan.cost > limit) {
       out.push(button('Подстроить жёстко под бюджет', function () {
-        const updated = window.App.planner.hardFit(plan);
+        // План берём заново: за время между отрисовкой и нажатием его могла
+        // заменить синхронизация, и прежняя ссылка вела бы в никуда.
+        const live = store.plan();
+        if (!live) return;
+        window.App.planner.hardFit(live);
         window.App.ui.refresh();
-        showHardFitResult(updated);
+        showHardFitResult();
       }, 'primary'));
     }
 
     if (plan.beforeHardFit) {
-      const normal = Math.round(plan.beforeHardFit.cost);
       out.push(button('Вернуть план по норме БЖУ', function () {
-        window.App.planner.undoHardFit(plan);
+        const live = store.plan();
+        if (!live || !live.beforeHardFit) {
+          toast('Плана по норме нет — соберите неделю заново', 'bad');
+          return;
+        }
+        const normal = Math.round(live.beforeHardFit.cost);
+        window.App.planner.undoHardFit(live);
         window.App.ui.refresh();
         toast('Вернулись к плану по полной норме — ' + money(normal));
       }));
@@ -168,7 +177,9 @@
   // Оставлено для совместимости со старым вызовом.
   function hardFitButton() { return budgetActions(); }
 
-  function showHardFitResult(plan) {
+  function showHardFitResult() {
+    const plan = window.App.store.plan();
+    if (!plan) return;
     const r = plan.hardFit || {};
     const lines = [];
 
@@ -200,7 +211,9 @@
     modal(r.fitted ? 'Подстроено под бюджет' : 'Бюджета не хватает', lines, [
       {
         label: 'Вернуть норму БЖУ', onClick: function () {
-          window.App.planner.undoHardFit(plan);
+          const live = window.App.store.plan();
+          if (!live || !live.beforeHardFit) return;
+          window.App.planner.undoHardFit(live);
           window.App.ui.refresh();
           toast('Вернулись к плану по полной норме');
         }

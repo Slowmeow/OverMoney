@@ -171,6 +171,24 @@
     return state;
   }
 
+  /* Текущий план — всегда живой объект из состояния.
+   *
+   * Брать его надо здесь и в момент действия, а не запоминать при отрисовке:
+   * синхронизация с другого устройства заменяет state.plan новым объектом,
+   * и обработчик кнопки, державший прежнюю ссылку, начинает править сироту.
+   * Внешне это выглядит так, будто кнопка не работает. */
+  function plan() {
+    return get().plan;
+  }
+
+  /* Приём пищи по дню и типу. Ссылку на сам приём хранить нельзя
+     по той же причине, что и ссылку на план. */
+  function mealAt(dayIndex, slot) {
+    const p = plan();
+    if (!p || !p.days || !p.days[dayIndex]) return null;
+    return p.days[dayIndex].meals.find(m => m.slot === slot) || null;
+  }
+
   function reset() {
     state = defaultState();
     save();
@@ -396,7 +414,7 @@
 
   window.App = window.App || {};
   window.App.store = {
-    load, save, get, reset, today, adopt, persist,
+    load, save, get, reset, today, adopt, persist, plan, mealAt,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
     recipes, allRecipes,
