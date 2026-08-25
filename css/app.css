@@ -534,6 +534,40 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .stat.good .stat-value { color: var(--good); }
 .stat.bad .stat-value { color: var(--bad); }
 
+/* ================= разбор перерасхода ================= */
+
+/* Перерасход должен бросаться в глаза, но не кричать: рамка цветом беды
+   и заголовок, остальное — обычный текст. */
+.over-card { border-color: var(--bad); }
+.over-card > .card-title { color: var(--bad); border-bottom-color: var(--bad); }
+
+.over-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.over-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 1.2fr) 72px auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.over-main { display: flex; flex-direction: column; min-width: 0; }
+.over-from { font-weight: var(--weight-semi); font-size: var(--text-sm); }
+.over-spend { font-size: var(--text-2xs); color: var(--ink-soft); }
+.over-arrow { color: var(--ink-faint); }
+.over-pick { min-width: 0; }
+.over-pick .input { width: 100%; }
+.over-to { font-size: var(--text-sm); }
+.over-saves { color: var(--good); font-weight: var(--weight-semi); font-variant-numeric: tabular-nums; text-align: right; }
+.over-actions { display: flex; gap: var(--space-3); }
+
+@media (max-width: 720px) {
+  .over-row { grid-template-columns: minmax(0, 1fr) 72px; }
+  .over-arrow { display: none; }
+  .over-pick { grid-column: 1 / -1; }
+  .over-actions { grid-column: 1 / -1; }
+}
+
 /* ================= неделя ================= */
 
 .week { display: flex; flex-direction: column; gap: var(--space-4); }

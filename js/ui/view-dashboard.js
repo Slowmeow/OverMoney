@@ -15,6 +15,7 @@
       warnings(),
       budgetCard(budget),
       plan ? planCard(plan, budget) : emptyPlanCard(),
+      plan ? u.overspendCard() : null,
       plan ? nutritionCard(plan) : null,
       plan ? adjustmentsCard(plan) : null
     ]);

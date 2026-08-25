@@ -1064,6 +1064,126 @@
     return plan;
   }
 
+  /* Разбор перерасхода: на чём именно ушли деньги и чем это заменить.
+   *
+   * Красной цифры «не хватает 149 ₽» мало — она говорит, что всё плохо,
+   * но не говорит, что делать. Здесь по каждому дорогому продукту подбирается
+   * несколько замен той же роли с оценкой экономии, а человек решает сам:
+   * применить, выбрать другую замену или убрать предложение навсегда,
+   * если оно ему не подходит.
+   */
+  /* Сколько замена сэкономит на самом деле.
+   *
+   * Прикидка по цене грамма белка врёт: продукты продаются упаковками,
+   * и переход на более дешёвый за килограмм продукт может потребовать новую
+   * пачку и выйти дороже. В тестах предложенная замена именно так и увеличила
+   * стоимость недели. Поэтому здесь замена реально применяется к копии плана,
+   * стоимость пересчитывается по упаковкам, и план возвращается на место. */
+  function trySwapSaving(plan, fromId, toId, byId) {
+    const snap = snapshot(plan);
+    const before = plan.cost || SH().costOf(plan);
+    applySwap(plan, fromId, toId, byId);
+    rebalance(plan, byId);
+    const after = SH().costOf(plan);
+    const acceptable = isAcceptable(plan);
+    restore(plan, snap);
+    rebalance(plan, byId);
+    return acceptable ? Math.round(before - after) : 0;
+  }
+
+  // Разбор вызывается на каждой перерисовке, а проба стоит недёшево.
+  // Пока план и список отказов не менялись, отдаём готовый результат.
+  let adviceCache = null;
+
+  function overspendAdvice(plan, actualSpend) {
+    const byId = S().productsById();
+    const state = S().get();
+    const limit = plan.budget ? plan.budget.food : budgetLimit().food;
+    const spent = actualSpend != null ? actualSpend : plan.cost;
+    const dismissed = state.dismissedSwaps || {};
+
+    const key = [plan.cost, Object.keys(dismissed).length, Math.round(limit), Math.round(spent)].join('|');
+    if (adviceCache && adviceCache.key === key) {
+      return Object.assign({}, adviceCache.value, { over: Math.round(spent - limit) });
+    }
+
+    const spend = spendByProduct(plan, byId);
+    const ideas = [];
+
+    Object.keys(spend).forEach(function (id) {
+      const product = byId[id];
+      if (!product || spend[id] < 40) return;
+
+      const base = unitCost(product, product.role);
+      if (!isFinite(base) || base <= 0) return;
+
+      const options = swapCandidates(product, byId)
+        .filter(c => !dismissed[id + '>' + c.p.id])
+        .slice(0, 3)                                  // проба недешёвая, перебирать всё незачем
+        .map(function (c) {
+          return { id: c.p.id, name: c.p.n, saves: trySwapSaving(plan, id, c.p.id, byId) };
+        })
+        .filter(o => o.saves >= 25)
+        .sort((a, b) => b.saves - a.saves);
+
+      if (!options.length) return;
+      ideas.push({
+        id: id,
+        name: product.n,
+        spend: Math.round(spend[id]),
+        options: options
+      });
+    });
+
+    ideas.sort((a, b) => b.options[0].saves - a.options[0].saves);
+
+    const value = {
+      spent: Math.round(spent),
+      limit: Math.round(limit),
+      ideas: ideas.slice(0, 6)
+    };
+    adviceCache = { key: key, value: value };
+
+    return Object.assign({ over: Math.round(spent - limit) }, value);
+  }
+
+  /* Применить одну замену из разбора. Возвращает, сколько реально сэкономили —
+     оценка и факт расходятся из-за целых упаковок. */
+  function applyProductSwap(plan, fromId, toId) {
+    const ctx = makeCtx();
+    const byId = ctx.byId;
+    const from = byId[fromId], to = byId[toId];
+    if (!from || !to) return 0;
+
+    const before = plan.cost || SH().costOf(plan);
+    const snap = snapshot(plan);
+
+    applySwap(plan, fromId, toId, byId);
+    rebalance(plan, byId);
+    refillEmpty(plan, ctx, byId);
+    plan.cost = SH().costOf(plan);
+
+    // Последняя проверка перед тем, как оставить изменение: даже проверенная
+    // проба могла разойтись с итогом, а делать хуже по нажатию «Заменить»
+    // приложение не имеет права.
+    if (plan.cost >= before || !isAcceptable(plan)) {
+      restore(plan, snap);
+      rebalance(plan, byId);
+      plan.cost = before;
+      S().save();
+      return 0;
+    }
+
+    const saved = Math.round(before - plan.cost);
+    plan.swaps = plan.swaps || [];
+    const known = plan.swaps.find(s => s.from === from.n && s.to === to.n);
+    if (known) known.saved += saved;
+    else plan.swaps.push({ from: from.n, to: to.n, saved: saved });
+
+    S().save();
+    return saved;
+  }
+
   /* Если бюджет остался — куда его осмысленно потратить.
      Ничего не меняем автоматически: это предложения, решает человек. */
   function upgradeSuggestions(plan) {
@@ -1104,6 +1224,7 @@
   window.App.planner = {
     generate, rebalance, fitToBudget, hardFit, undoHardFit, budgetLimit, makeCtx, refillEmpty, tuneMacros,
     slotTargets, targetsOf, personShares, mealPortions,
+    overspendAdvice, applyProductSwap,
     upgradeSuggestions, recipeCost, unitCost, allMeals,
     DAY_NAMES: DAY_NAMES
   };

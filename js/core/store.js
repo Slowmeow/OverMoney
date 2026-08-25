@@ -70,6 +70,8 @@
          за килограмм, и без этого сравнение врёт. */
       priceLog: [],        // [{d, p, brand, store, pr, pack}]
       brandChoice: {},     // {productId: марка} — какую брать в расчёт; по умолчанию самая дешёвая
+      // Замены, которые человек отклонил: предлагать их снова — навязчиво.
+      dismissedSwaps: {},  // {'откуда>куда': true}
       stores: ['Пятёрочка', 'Магнит'],
       customProducts: [],
       customRecipes: [],
@@ -401,6 +403,19 @@
     return { total: total, items: items };
   }
 
+  /* Отклонённые предложения замен. */
+  function dismissSwap(fromId, toId) {
+    const s = get();
+    s.dismissedSwaps = s.dismissedSwaps || {};
+    s.dismissedSwaps[fromId + '>' + toId] = true;
+    save();
+  }
+
+  function restoreSwaps() {
+    get().dismissedSwaps = {};
+    save();
+  }
+
   // ---------- ЭКСПОРТ / ИМПОРТ ----------
 
   function exportJson() {
@@ -422,6 +437,7 @@
     recipes, allRecipes,
     pantryAdd, pantrySet,
     weeklyBudget, regularsWeeklyCost, PERIODS, periodWeeks,
+    dismissSwap, restoreSwaps,
     exportJson, importJson,
     defaultPerson
   };

@@ -23,6 +23,7 @@
 
     return h('div.view', {}, [
       summary(list, budget, plan),
+      u.overspendCard(list.total),
       h('div.list-groups', {}, list.byCategory.map(group => groupCard(group))),
       pantryCovered(list),
       regularsCard(),

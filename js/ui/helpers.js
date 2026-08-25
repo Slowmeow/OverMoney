@@ -177,6 +177,84 @@
   // Оставлено для совместимости со старым вызовом.
   function hardFitButton() { return budgetActions(); }
 
+  /* Разбор перерасхода.
+   *
+   * Красная цифра «не хватает 149 ₽» говорит, что всё плохо, но не говорит,
+   * что делать. Здесь видно, на чём именно ушли деньги, и что можно поставить
+   * вместо. Предложения не навязываются: любое можно заменить на другое
+   * из того же ряда или убрать навсегда, если оно не подходит. */
+  function overspendCard(actualSpend) {
+    const store = window.App.store;
+    const plan = store.plan();
+    if (!plan) return null;
+
+    const advice = window.App.planner.overspendAdvice(plan, actualSpend);
+    if (advice.over <= 0) return null;
+
+    const rows = advice.ideas.map(function (idea) {
+      // Выбранная замена хранится в самой строке: человек может перебрать
+      // варианты, прежде чем применить.
+      let chosen = idea.options[0];
+
+      const costLabel = h('span.over-saves', { text: '−' + money(chosen.saves) });
+
+      const picker = idea.options.length > 1
+        ? select(idea.options.map(o => ({ value: o.id, label: o.name + ' (−' + money(o.saves) + ')' })),
+            chosen.id,
+            function (v) {
+              chosen = idea.options.find(o => o.id === v) || chosen;
+              costLabel.textContent = '−' + money(chosen.saves);
+            })
+        : h('span.over-to', { text: chosen.name });
+
+      return h('div.over-row', {}, [
+        h('div.over-main', {}, [
+          h('span.over-from', { text: idea.name }),
+          h('span.over-spend', { text: 'в плане на ' + money(idea.spend) })
+        ]),
+        h('span.over-arrow', { text: '→' }),
+        h('div.over-pick', {}, picker),
+        costLabel,
+        h('div.over-actions', {}, [
+          button('Заменить', function () {
+            const live = store.plan();
+            if (!live) return;
+            const saved = window.App.planner.applyProductSwap(live, idea.id, chosen.id);
+            window.App.ui.refresh();
+            toast(saved > 0
+              ? 'Заменено, неделя дешевле на ' + money(saved)
+              : 'Замена не удешевила — вернул как было', saved > 0 ? null : 'bad');
+          }, 'small primary'),
+          button('Не предлагать', function () {
+            store.dismissSwap(idea.id, chosen.id);
+            window.App.ui.refresh();
+            toast('Больше не предложу');
+          }, 'ghost small')
+        ])
+      ]);
+    });
+
+    const dismissed = Object.keys(store.get().dismissedSwaps || {}).length;
+
+    return card('Перерасход ' + money(advice.over), [
+      h('p', { text: 'Потрачено ' + money(advice.spent) + ' при бюджете ' + money(advice.limit) + '.' }),
+      rows.length
+        ? h('div.over-list', {}, rows)
+        : h('p.hint', { text: 'Заменить нечего: дешёвых аналогов той же роли в каталоге не осталось. ' +
+            'Остаётся жёсткая подгонка или пересмотр бюджета.' }),
+      rows.length
+        ? h('p.hint', { text: 'Экономия оценена по цене грамма белка или килокалории. ' +
+            'Итог может отличаться: продукты продаются целыми упаковками.' })
+        : null,
+      dismissed
+        ? h('div.row-actions', {}, button('Вернуть отклонённые предложения (' + dismissed + ')', function () {
+            store.restoreSwaps();
+            window.App.ui.refresh();
+          }, 'ghost small'))
+        : null
+    ], 'over-card');
+  }
+
   function showHardFitResult() {
     const plan = window.App.store.plan();
     if (!plan) return;
@@ -225,6 +303,6 @@
   window.App = window.App || {};
   window.App.ui = Object.assign(window.App.ui || {}, {
     h, money, num, signedPct, card, field, input, numberInput, select, button, bar, toast, modal,
-    hardFitButton, budgetActions, showHardFitResult
+    hardFitButton, budgetActions, overspendCard, showHardFitResult
   });
 })();
