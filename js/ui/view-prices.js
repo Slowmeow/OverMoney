@@ -139,7 +139,7 @@
 
         return h('div.brand-row' + (isChosen ? '.chosen' : ''), {}, [
           h('div.brand-main', {}, [
-            h('span.brand-name', { text: b.brand || 'без марки' }),
+            h('span.brand-title', { text: b.brand || 'без марки' }),
             h('span.brand-meta', {
               text: b.pr + ' ₽ за ' + Math.round(pack) + (product.unit === 'ml' ? ' мл' : ' г') +
                 ' · ' + Math.round(perUnit) + ' ₽/' + unit +

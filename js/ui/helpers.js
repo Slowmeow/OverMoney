@@ -187,7 +187,9 @@
     }
 
     lines.push(h('p.hint', {
-      text: 'Итог по неделе: калории ' + r.kcalShare + '% нормы, белок ' + r.proteinShare + '%.'
+      text: 'Итог по неделе: калории ' + r.kcalShare + '% нормы, белок ' +
+        r.proteinPerKg + ' г на кг веса при вашей цели ' + r.targetPerKg +
+        ' и безопасном минимуме ' + r.safePerKg + '.'
     }));
 
     if (!r.fitted) {

@@ -918,9 +918,19 @@
     const w = plan.nutrition.week, t = plan.targets.week;
     const proteinShare = Math.round(w.p / t.p * 100);
 
+    // Доля от цели пугает сильнее, чем есть на деле: цель 1,5 г/кг, а нижняя
+    // безопасная граница 0,8 г/кг — это и есть 53% от цели. Поэтому показываем
+    // ещё и граммы на килограмм, по ним видно реальное положение дел.
+    const totalWeight = state.people.reduce((sum, p) => sum + p.weight, 0) || 1;
+    const proteinPerKg = Math.round(w.p / 7 / totalWeight * 100) / 100;
+    const targetPerKg = Math.round(t.p / 7 / totalWeight * 100) / 100;
+
     // Отчитываемся по тому, что получилось на самом деле, а не по названию
     // ступени, до которой дошли: иначе сообщение врёт.
-    if (proteinShare < 97) plan.compromises.push('белок снижен до ' + proteinShare + '% нормы');
+    if (proteinShare < 97) {
+      plan.compromises.push('белок снижен с ' + targetPerKg + ' до ' + proteinPerKg +
+        ' г на кг веса (' + proteinShare + '% вашей цели)');
+    }
 
     // Считаем повторы по готовому меню, а не по настройке: настройка к этому
     // моменту уже возвращена к исходной и сказала бы неправду.
@@ -941,6 +951,9 @@
       cost: plan.cost,
       limit: Math.round(limit.allowed),
       proteinShare: proteinShare,
+      proteinPerKg: proteinPerKg,
+      targetPerKg: targetPerKg,
+      safePerKg: 0.8,
       kcalShare: Math.round(w.kcal / t.kcal * 100),
       compromises: plan.compromises
     };
@@ -949,8 +962,8 @@
       plan.notes = plan.notes || [];
       plan.notes.push('Даже с ослабленными требованиями план не влезает: не хватает ' +
         Math.round(plan.cost - limit.allowed) + ' ₽ в неделю. Дальше резать нельзя — ' +
-        'белок уже на нижней безопасной границе. Это не ограничение приложения, ' +
-        'а арифметика: столько еды за эти деньги в ваших магазинах не купить.');
+        'белок уже на нижней безопасной границе 0,8 г на кг веса. Это не ограничение ' +
+        'приложения, а арифметика: столько еды за эти деньги в ваших магазинах не купить.');
     }
 
     S().save();
