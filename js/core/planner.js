@@ -846,6 +846,23 @@
     const original = { proteinFloor: settings.proteinFloor, maxRepeat: settings.maxRepeat };
     plan.compromises = [];
 
+    // Снимок плана «по норме» — чтобы к нему можно было вернуться одной кнопкой.
+    // Компромисс должен быть обратимым: человек соглашается на него ради денег,
+    // а не навсегда.
+    if (!plan.beforeHardFit) {
+      plan.beforeHardFit = {
+        days: JSON.parse(JSON.stringify(plan.days)),
+        slotTargets: plan.slotTargets,
+        targets: plan.targets,
+        nutrition: plan.nutrition,
+        swaps: plan.swaps,
+        replacements: plan.replacements,
+        notes: plan.notes,
+        cost: plan.cost,
+        budget: plan.budget
+      };
+    }
+
     // Абсолютный минимум белка: 0,8 г/кг — рекомендуемая норма ВОЗ,
     // ниже неё начинается потеря мышц, а не экономия.
     const safeProteinWeek = state.people.reduce((sum, p) => sum + p.weight * 0.8, 0) * 7;
@@ -940,6 +957,29 @@
     return plan;
   }
 
+  /* Вернуться к плану, собранному по полной норме БЖУ. */
+  function undoHardFit(plan) {
+    const snap = plan.beforeHardFit;
+    if (!snap) return plan;
+
+    plan.days = snap.days;
+    plan.slotTargets = snap.slotTargets;
+    plan.targets = snap.targets;
+    plan.nutrition = snap.nutrition;
+    plan.swaps = snap.swaps;
+    plan.replacements = snap.replacements;
+    plan.notes = snap.notes;
+    plan.cost = snap.cost;
+    plan.budget = snap.budget;
+
+    delete plan.beforeHardFit;
+    delete plan.hardFit;
+    delete plan.compromises;
+
+    S().save();
+    return plan;
+  }
+
   /* Если бюджет остался — куда его осмысленно потратить.
      Ничего не меняем автоматически: это предложения, решает человек. */
   function upgradeSuggestions(plan) {
@@ -978,7 +1018,7 @@
 
   window.App = window.App || {};
   window.App.planner = {
-    generate, rebalance, fitToBudget, hardFit, budgetLimit, makeCtx, refillEmpty, tuneMacros,
+    generate, rebalance, fitToBudget, hardFit, undoHardFit, budgetLimit, makeCtx, refillEmpty, tuneMacros,
     slotTargets, targetsOf, personShares,
     upgradeSuggestions, recipeCost, unitCost, allMeals,
     DAY_NAMES: DAY_NAMES

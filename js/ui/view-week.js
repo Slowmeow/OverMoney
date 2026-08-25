@@ -90,34 +90,134 @@
         })
       ]),
       h('div.meal-actions', {}, [
-        u.button('Состав', () => showRecipe(meal, byId), 'ghost small'),
+        u.button('Состав', () => showRecipe(meal, byId, plan), 'ghost small'),
         leftover ? null : u.button('Заменить', () => showAlternatives(plan, meal, di, byId), 'ghost small')
       ])
     ]);
   }
 
-  function showRecipe(meal, byId) {
+  /* Состав блюда — редактируемый: и граммовка, и цена продукта правятся прямо
+     здесь. Без этого пришлось бы уходить на другой экран ради одной цифры,
+     а увидеть результат — только вернувшись обратно. */
+  function showRecipe(meal, byId, plan) {
     const u = U(), h = u.h;
-    const mult = meal.mult;
-    const rows = meal.recipe.ing.map(function (i) {
-      const p = byId[i.p];
-      if (!p) return null;
-      const grams = i.g * mult;
-      return h('tr', {}, [
-        h('td', { text: p.n }),
-        h('td.num', { text: SH().formatAmount(p, grams) }),
-        h('td.num', { text: u.money(grams * S().pricePerBase(p)) })
-      ]);
-    }).filter(Boolean);
+    const body = h('div.recipe-edit');
 
-    u.modal(meal.recipe.n, [
-      h('p.hint', { text: 'Порции пересчитаны под вашу норму: коэффициент ×' + mult + ' от базового рецепта.' }),
-      h('table.table', {}, [
-        h('thead', {}, h('tr', {}, [h('th', { text: 'Продукт' }), h('th.num', { text: 'Нужно' }), h('th.num', { text: 'Стоимость' })])),
-        h('tbody', {}, rows)
-      ]),
-      h('p.steps', { text: meal.recipe.st })
-    ], [{ label: 'Закрыть' }]);
+    function draw() {
+      body.innerHTML = '';
+      const mult = meal.mult;
+      const nut = N().nutritionOf(meal.recipe.ing.map(i => ({ p: i.p, g: i.g * mult })), byId);
+      const cost = P().recipeCost(meal.recipe, byId, SH().buyMult(meal));
+
+      body.appendChild(h('p.hint', {
+        text: 'Порции пересчитаны под вашу норму: коэффициент ×' + mult + ' от базового рецепта. ' +
+          'Правьте граммы и цены — итог пересчитается сразу.'
+      }));
+
+      body.appendChild(h('div.recipe-rows', {}, meal.recipe.ing.map(function (ing, idx) {
+        const p = byId[ing.p];
+        if (!p) return null;
+        const grams = ing.g * mult;
+
+        // Граммы правим в том виде, в каком они на экране, а храним базовые:
+        // иначе пользователю пришлось бы делить в уме на коэффициент.
+        const gramsInput = h('input.input.small-input', {
+          type: 'number', value: Math.round(grams), min: '0', step: '5',
+          onchange: function (e) {
+            const value = Math.max(0, parseFloat(e.target.value) || 0);
+            meal.recipe.ing[idx].g = mult > 0 ? value / mult : value;
+            commit();
+          }
+        });
+
+        const priceInput = h('input.input.price-input', {
+          type: 'number', value: p.pr, min: '0', step: '1',
+          onchange: function (e) {
+            const value = parseFloat(e.target.value);
+            if (!(value > 0)) return;
+            S().setPrice(p.id, value);
+            byId = S().productsById();
+            commit();
+            u.toast('Цена обновлена: ' + p.n);
+          }
+        });
+
+        return h('div.recipe-row', {}, [
+          h('div.recipe-main', {}, [
+            h('span.recipe-name', { text: p.n }),
+            h('span.recipe-meta', {
+              text: SH().formatAmount(p, grams) + ' · ' + u.money(grams * S().pricePerBase(p)) +
+                (p.brand ? ' · ' + p.brand : '')
+            })
+          ]),
+          h('label.mini-field', {}, [h('span', { text: p.unit === 'ml' ? 'мл' : 'г' }), gramsInput]),
+          h('label.mini-field', {}, [h('span', { text: '₽ / ' + p.pl }), priceInput]),
+          u.button('✕', function () {
+            meal.recipe.ing.splice(idx, 1);
+            commit();
+          }, 'ghost small')
+        ]);
+      }).filter(Boolean)));
+
+      body.appendChild(h('div.recipe-total', {}, [
+        h('span', { text: nut.kcal + ' ккал · Б ' + Math.round(nut.p) + ' · Ж ' + Math.round(nut.f) + ' · У ' + Math.round(nut.c) }),
+        h('span.recipe-cost', { text: u.money(cost) })
+      ]));
+
+      body.appendChild(addIngredientRow());
+      body.appendChild(h('p.steps', { text: meal.recipe.st }));
+    }
+
+    function commit() {
+      P().rebalance(plan, byId);
+      plan.cost = SH().costOf(plan);
+      savePlan(plan, true);
+      draw();
+    }
+
+    function addIngredientRow() {
+      const products = S().products().filter(p => p.role !== 'nonfood');
+      const search = h('input.input', { type: 'search', placeholder: 'Добавить продукт…' });
+      const found = h('div.search-results');
+
+      search.addEventListener('input', function () {
+        found.innerHTML = '';
+        const q = search.value.trim().toLowerCase();
+        if (q.length < 2) return;
+        products.filter(p => p.n.toLowerCase().indexOf(q) !== -1).slice(0, 6).forEach(function (p) {
+          found.appendChild(h('button.candidate-btn', {
+            type: 'button', text: p.n + ' · ' + u.money(p.pr) + ' / ' + p.pl,
+            onclick: function () {
+              const exists = meal.recipe.ing.find(i => i.p === p.id);
+              if (exists) exists.g += 50 / (meal.mult || 1);
+              else meal.recipe.ing.push({ p: p.id, g: 50 / (meal.mult || 1) });
+              commit();
+            }
+          }));
+        });
+      });
+
+      return h('div.add-block', {}, [search, found]);
+    }
+
+    draw();
+
+    u.modal(meal.recipe.n, body, [
+      {
+        label: 'Сохранить как свой рецепт', onClick: function () {
+          const state = S().get();
+          const copy = Object.assign({}, meal.recipe, {
+            id: 'my_' + Date.now().toString(36),
+            n: meal.recipe.n + ' (мой вариант)',
+            ing: meal.recipe.ing.map(i => ({ p: i.p, g: i.g }))
+          });
+          state.customRecipes.push(copy);
+          S().save();
+          u.toast('Сохранено — теперь этот вариант будет попадать в меню');
+        }
+      },
+      { label: 'Готово', cls: 'primary' }
+    ]);
   }
 
   function showAlternatives(plan, meal, di, byId) {
@@ -184,11 +284,13 @@
     u.toast('Заменено · неделя теперь ' + u.money(plan.cost));
   }
 
-  function savePlan(plan) {
+  function savePlan(plan, keepScreen) {
     const state = S().get();
     state.plan = plan;
     S().save();
-    window.App.ui.refresh();
+    // При правке внутри модалки экран не трогаем: перерисовка закрыла бы окно
+    // вместе с полем, в котором человек сейчас печатает.
+    if (!keepScreen) window.App.ui.refresh();
   }
 
   function formatDate(iso) {

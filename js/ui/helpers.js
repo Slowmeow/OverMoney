@@ -135,23 +135,38 @@
     return { close: close, el: overlay };
   }
 
-  /* Жёсткая подгонка под бюджет: одна кнопка на всех экранах, где видна
-     нехватка. Результат показываем целиком — и сколько получилось,
-     и чем за это заплатили. */
-  function hardFitButton() {
+  /* Кнопки работы с бюджетом: подстроить жёстко и вернуться к норме.
+     Компромисс обратим — после жёсткой подгонки рядом всегда стоит выход обратно. */
+  function budgetActions() {
     const store = window.App.store;
     const plan = store.get().plan;
-    if (!plan) return null;
+    if (!plan) return [];
 
     const limit = plan.budget ? plan.budget.food : store.weeklyBudget().food;
-    if (plan.cost <= limit) return null;
+    const out = [];
 
-    return button('Подстроить жёстко под бюджет', function () {
-      const updated = window.App.planner.hardFit(plan);
-      window.App.ui.refresh();
-      showHardFitResult(updated);
-    }, 'primary');
+    if (plan.cost > limit) {
+      out.push(button('Подстроить жёстко под бюджет', function () {
+        const updated = window.App.planner.hardFit(plan);
+        window.App.ui.refresh();
+        showHardFitResult(updated);
+      }, 'primary'));
+    }
+
+    if (plan.beforeHardFit) {
+      const normal = Math.round(plan.beforeHardFit.cost);
+      out.push(button('Вернуть план по норме БЖУ', function () {
+        window.App.planner.undoHardFit(plan);
+        window.App.ui.refresh();
+        toast('Вернулись к плану по полной норме — ' + money(normal));
+      }));
+    }
+
+    return out;
   }
+
+  // Оставлено для совместимости со старым вызовом.
+  function hardFitButton() { return budgetActions(); }
 
   function showHardFitResult(plan) {
     const r = plan.hardFit || {};
@@ -180,12 +195,21 @@
         '0,8 г на кг веса, а это рекомендуемый минимум, а не место для экономии.' }));
     }
 
-    modal(r.fitted ? 'Подстроено под бюджет' : 'Бюджета не хватает', lines, [{ label: 'Понятно' }]);
+    modal(r.fitted ? 'Подстроено под бюджет' : 'Бюджета не хватает', lines, [
+      {
+        label: 'Вернуть норму БЖУ', onClick: function () {
+          window.App.planner.undoHardFit(plan);
+          window.App.ui.refresh();
+          toast('Вернулись к плану по полной норме');
+        }
+      },
+      { label: 'Оставить так', cls: 'primary' }
+    ]);
   }
 
   window.App = window.App || {};
   window.App.ui = Object.assign(window.App.ui || {}, {
     h, money, num, signedPct, card, field, input, numberInput, select, button, bar, toast, modal,
-    hardFitButton, showHardFitResult
+    hardFitButton, budgetActions, showHardFitResult
   });
 })();

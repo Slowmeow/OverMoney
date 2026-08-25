@@ -376,6 +376,49 @@ html, body {
 
 .steps { font-size: 13px; color: var(--ink-soft); margin: 10px 0 0; }
 
+/* Редактор состава блюда */
+.recipe-edit { display: flex; flex-direction: column; gap: 10px; }
+.recipe-rows { display: flex; flex-direction: column; gap: 6px; }
+.recipe-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border-radius: 9px;
+}
+.recipe-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+.recipe-name { font-weight: 600; font-size: 13px; }
+.recipe-meta { font-size: 11px; color: var(--ink-soft); }
+.mini-field { display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto; }
+.mini-field span { font-size: 10px; color: var(--ink-soft); white-space: nowrap; }
+.mini-field .input { width: 74px; text-align: right; padding: 6px 8px; }
+
+.recipe-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.recipe-cost { font-weight: 650; font-variant-numeric: tabular-nums; }
+
+.candidate-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+}
+.candidate-btn:hover { border-color: var(--accent); }
+
 /* ---------------- список покупок ---------------- */
 
 .list-groups { display: flex; flex-direction: column; gap: 10px; }
