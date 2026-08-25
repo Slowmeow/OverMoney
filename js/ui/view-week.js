@@ -90,7 +90,8 @@
         h('span.meal-name', { text: meal.recipe.n }),
         h('span.meal-meta', {
           text: (leftover ? 'вчерашнее, готовить не надо · ' : meal.recipe.t + ' мин · ') +
-            nut.kcal + ' ккал · белок ' + Math.round(nut.p) + ' г · ' + u.money(cost) +
+            nut.kcal + ' ккал · Б ' + Math.round(nut.p) + ' · Ж ' + Math.round(nut.f) +
+            ' · У ' + Math.round(nut.c) + ' · ' + u.money(cost) +
             (cooksAhead ? ' · готовим сразу на два дня' : '')
         }),
         // Готовим одно блюдо, а нормы разные — значит и в тарелках разное.
@@ -115,7 +116,9 @@
       return h('span.portion', {}, [
         h('span.portion-who', { text: x.name }),
         h('span.portion-amount', { text: '≈' + x.grams + ' г' }),
-        h('span.portion-kcal', { text: x.kcal + ' ккал' }),
+        h('span.portion-kcal', {
+          text: x.kcal + ' ккал · Б ' + x.p + ' · Ж ' + x.f + ' · У ' + x.c
+        }),
         h('span.portion-cost', { text: u.money(x.cost) })
       ]);
     }));
@@ -138,9 +141,11 @@
       const nut = N().nutritionOf(meal.recipe.ing.map(i => ({ p: i.p, g: i.g * mult })), byId);
       const cost = P().mealCost(plan, meal);
 
+      const pot = P().potMeals(plan, dayIndex, slot).length;
       body.appendChild(h('p.hint', {
         text: 'Порции пересчитаны под вашу норму: коэффициент ×' + u.num(mult, 2) +
-          ' от базового рецепта. Правьте количество и цену — итог пересчитается сразу.'
+          ' от базового рецепта. Правьте количество и цену — итог пересчитается сразу.' +
+          (pot > 1 ? ' Это блюдо готовится на ' + pot + ' дня, поэтому правка применится к обоим.' : '')
       }));
 
       /* Таблица, а не набор карточек: подписи вроде «₽ / бутылка 900 мл»
@@ -212,7 +217,9 @@
             return h('div.portion-row', {}, [
               h('span.portion-who', { text: x.name }),
               h('span.portion-amount', { text: '≈' + x.grams + ' г' }),
-              h('span.portion-kcal', { text: x.kcal + ' ккал · белок ' + x.p + ' г' }),
+              h('span.portion-kcal', {
+                text: x.kcal + ' ккал · Б ' + x.p + ' · Ж ' + x.f + ' · У ' + x.c
+              }),
               h('span.portion-cost', { text: u.money(x.cost) }),
               h('span.portion-share', { text: Math.round(x.share * 100) + '%' })
             ]);
@@ -233,6 +240,9 @@
     }
 
     function commit() {
+      // Блюдо на два дня хранится двумя копиями, но кастрюля одна:
+      // правка обязана дойти до обоих дней.
+      P().syncPot(plan, dayIndex, slot);
       P().rebalance(plan, byId);
       plan.cost = SH().costOf(plan);
       savePlan(plan, true);

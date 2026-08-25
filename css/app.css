@@ -861,21 +861,48 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .person-meals { display: flex; align-items: center; gap: var(--space-5); flex-wrap: wrap; }
 .person-meals .field-label { flex: 0 0 auto; }
 
-.diets { display: flex; flex-direction: column; gap: var(--space-3); }
-.diet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-3); }
-.diet-chip {
+/* Ограничения свёрнуты в строку: обычный случай — их нет, и держать
+   на экране весь список незачем. Полный выбор живёт в модальном окне. */
+.diets-row { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.diets-row .field-label { flex: 0 0 auto; }
+.diet-empty { font-size: var(--text-sm); color: var(--ink-faint); }
+
+.diet-tags { display: flex; flex-wrap: wrap; gap: var(--space-3); flex: 1 1 auto; min-width: 0; }
+.diet-tag {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+.diet-tag-name, .diet-tag-drop {
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  transition: background var(--dur) var(--ease);
+}
+.diet-tag-name:hover, .diet-tag-drop:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.diet-tag-drop { padding-left: var(--space-2); padding-right: var(--space-4); opacity: .75; }
+
+.diet-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.diet-row {
   display: flex;
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-5);
-  background: var(--surface-2);
-  border: 1px solid transparent;
   border-radius: var(--radius-sm);
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
-.diet-chip:hover { border-color: var(--line-strong); }
-.diet-chip.on { border-color: var(--accent); background: var(--accent-soft); }
+.diet-row:hover { background: var(--surface-2); }
+.diet-row.on { border-color: var(--accent); background: var(--accent-soft); }
 .diet-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
 .diet-name { font-size: var(--text-sm); font-weight: var(--weight-semi); }
 .diet-short { font-size: var(--text-2xs); color: var(--ink-soft); }

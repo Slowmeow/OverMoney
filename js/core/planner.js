@@ -256,6 +256,50 @@
     return fresh;
   }
 
+  /* Все приёмы пищи, которые едят из одной кастрюли: день готовки и его
+     «вчерашние» продолжения. */
+  function potMeals(plan, dayIndex, slot) {
+    const day = plan.days[dayIndex];
+    const meal = day && day.meals.find(m => m.slot === slot);
+    if (!meal) return [];
+
+    const cookIndex = meal.leftoverOf != null ? meal.leftoverOf : dayIndex;
+    const out = [];
+    const cook = plan.days[cookIndex] && plan.days[cookIndex].meals.find(m => m.slot === slot);
+    if (cook) out.push(cook);
+    plan.days.forEach(function (d) {
+      d.meals.forEach(function (m) {
+        if (m.leftoverOf === cookIndex && m.slot === slot) out.push(m);
+      });
+    });
+    return out;
+  }
+
+  /* Разложить правку состава на всю кастрюлю.
+   *
+   * Блюдо «на два дня» хранится двумя копиями — так у каждого дня своя порция.
+   * Но кастрюля-то одна: если поправить состав в день готовки, второй день
+   * обязан измениться вместе с ним. Без этого две копии расходятся, и второй
+   * день показывает еду, которую никто не готовил. */
+  function syncPot(plan, dayIndex, slot) {
+    const meals = potMeals(plan, dayIndex, slot);
+    if (meals.length < 2) return 0;
+
+    const day = plan.days[dayIndex];
+    const source = day && day.meals.find(m => m.slot === slot);
+    if (!source || !source.recipe) return 0;
+
+    let changed = 0;
+    meals.forEach(function (m) {
+      if (m === source || !m.recipe) return;
+      m.recipe = Object.assign({}, source.recipe, {
+        ing: source.recipe.ing.map(i => ({ p: i.p, g: i.g }))
+      });
+      changed++;
+    });
+    return changed;
+  }
+
   /* Во что обходится один приём пищи.
    *
    * Не «граммы × цена с ценника»: так получается на 38% меньше того, что уходит
@@ -313,6 +357,8 @@
         grams: Math.round(totalWeight * share),
         kcal: Math.round((nut.kcal || 0) * share),
         p: Math.round((nut.p || 0) * share),
+        f: Math.round((nut.f || 0) * share),
+        c: Math.round((nut.c || 0) * share),
         cost: total * share
       };
     });
@@ -1294,7 +1340,7 @@
   window.App = window.App || {};
   window.App.planner = {
     generate, rebalance, fitToBudget, hardFit, undoHardFit, budgetLimit, makeCtx, refillEmpty, tuneMacros,
-    slotTargets, targetsOf, personShares, mealPortions, mealCost, dayCost,
+    slotTargets, targetsOf, personShares, mealPortions, mealCost, dayCost, potMeals, syncPot,
     overspendAdvice, applyProductSwap,
     upgradeSuggestions, recipeCost, unitCost, allMeals,
     DAY_NAMES: DAY_NAMES

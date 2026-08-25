@@ -166,38 +166,77 @@
    * Сознательно отделены от «не предлагать этот продукт»: там личный вкус,
    * здесь — ограничение по здоровью, у которого есть причина и последствия.
    * Поэтому у каждого режима видно, что именно он убирает и почему. */
+  /* Свёрнутая строка вместо десяти карточек.
+   *
+   * Обычный случай — ограничений нет, и постоянно держать на экране весь список
+   * незачем: он занимал больше места, чем весь профиль, и повторялся у каждого
+   * человека. Показываем только выбранное, остальное — за кнопкой. */
   function dietsBlock(person) {
     const u = U(), h = u.h;
     const chosen = person.diets || [];
 
-    return h('div.diets', {}, [
-      h('span.field-label', { text: 'Ограничения по здоровью и диеты' }),
-      h('div.diet-grid', {}, window.App.DIETS.map(function (d) {
-        const on = chosen.indexOf(d.id) !== -1;
-        return h('label.diet-chip' + (on ? '.on' : ''), {}, [
-          h('input', {
-            type: 'checkbox', checked: on,
-            onchange: function (e) {
-              const list = (person.diets || []).slice();
-              person.diets = e.target.checked
-                ? list.concat([d.id])
-                : list.filter(x => x !== d.id);
-              S().save();
-              window.App.ui.refresh();
-            }
-          }),
-          h('span.diet-main', {}, [
-            h('span.diet-name', { text: d.n }),
-            h('span.diet-short', { text: d.short })
-          ]),
-          u.button('?', function () { explainDiet(d); }, 'ghost small')
-        ]);
-      })),
-      chosen.length ? h('p.field-hint', {
-        text: 'Готовим одно блюдо на всех, поэтому ограничения этого профиля действуют ' +
-          'на общее меню — иначе пришлось бы готовить дважды.'
-      }) : null
+    return h('div.diets-row', {}, [
+      h('span.field-label', { text: 'Ограничения' }),
+      chosen.length
+        ? h('div.diet-tags', {}, chosen.map(function (id) {
+            const d = window.App.dietById[id];
+            if (!d) return null;
+            return h('span.diet-tag', {}, [
+              h('button.diet-tag-name', {
+                type: 'button', text: d.n, title: 'Чем это обосновано',
+                onclick: function () { explainDiet(d); }
+              }),
+              h('button.diet-tag-drop', {
+                type: 'button', text: '✕', 'aria-label': 'Убрать ограничение ' + d.n,
+                onclick: function () {
+                  person.diets = chosen.filter(x => x !== id);
+                  S().save();
+                  window.App.ui.refresh();
+                }
+              })
+            ]);
+          }).filter(Boolean))
+        : h('span.diet-empty', { text: 'нет' }),
+      u.button(chosen.length ? 'Изменить' : 'Добавить', () => dietPicker(person), 'ghost small')
     ]);
+  }
+
+  /* Полный список — в окне, где ему и место: десять пунктов в один столбец
+     читаются быстрее, чем сетка карточек. */
+  function dietPicker(person) {
+    const u = U(), h = u.h;
+
+    const list = h('div.diet-list', {}, window.App.DIETS.map(function (d) {
+      const row = h('label.diet-row', {}, [
+        h('input', {
+          type: 'checkbox', checked: (person.diets || []).indexOf(d.id) !== -1,
+          onchange: function (e) {
+            const cur = (person.diets || []).slice();
+            person.diets = e.target.checked ? cur.concat([d.id]) : cur.filter(x => x !== d.id);
+            row.className = 'diet-row' + (e.target.checked ? ' on' : '');
+            S().save();
+          }
+        }),
+        h('span.diet-main', {}, [
+          h('span.diet-name', { text: d.n }),
+          h('span.diet-short', { text: d.short })
+        ]),
+        u.button('?', function (e) { e.stopPropagation(); explainDiet(d); }, 'ghost small')
+      ]);
+      if ((person.diets || []).indexOf(d.id) !== -1) row.className += ' on';
+      return row;
+    }));
+
+    u.modal('Ограничения: ' + person.name, [
+      h('p.hint', { text: 'Готовим одно блюдо на всех, поэтому ограничения любого профиля ' +
+        'действуют на общее меню — иначе пришлось бы готовить дважды.' }),
+      list,
+      h('div.note', {}, [
+        h('p', { text: 'Это фильтр продуктов, а не лечение.' }),
+        h('p', { text: 'Приложение не ставит диагноз и не знает форму вашего заболевания. ' +
+          'Список запретов стоит сверить с врачом, а лишнее снять вручную на вкладке «Цены».' })
+      ])
+    ], [{ label: 'Готово', cls: 'primary', onClick: function () { window.App.ui.refresh(); } }]);
   }
 
   function explainDiet(d) {
