@@ -60,7 +60,8 @@
         h('span.day-date', { text: formatDate(day.date) }),
         h('span.day-kcal' + (Math.abs(dev) > 10 ? '.warn' : ''), {
           text: nut.kcal + ' ккал · Б ' + Math.round(nut.p) + ' · Ж ' + Math.round(nut.f) + ' · У ' + Math.round(nut.c)
-        })
+        }),
+        h('span.day-cost', { text: u.money(P().dayCost(plan, day)) })
       ]),
       h('div.day-meals', {}, day.meals.map(meal => mealRow(plan, day, di, meal, byId)))
     ]);
@@ -78,9 +79,9 @@
 
     const leftover = meal.leftoverOf != null;
     const nut = meal.nutrition || { kcal: 0, p: 0 };
-    // Показываем цену съедаемой порции, а не закупки: тогда сумма по людям
-    // сходится со строкой, а «готовим на два дня» подписано отдельно.
-    const cost = P().recipeCost(meal.recipe, byId, meal.mult);
+    // Цена по фактическим тратам: с переплатой за упаковки и без того,
+    // что взято из кладовой. Сумма по всем блюдам равна списку покупок.
+    const cost = P().mealCost(plan, meal);
     const cooksAhead = !leftover && SH().buyMult(meal) > meal.mult * 1.2;
 
     return h('div.meal' + (leftover ? '.leftover' : ''), {}, [
@@ -135,7 +136,7 @@
       body.innerHTML = '';
       const mult = meal.mult;
       const nut = N().nutritionOf(meal.recipe.ing.map(i => ({ p: i.p, g: i.g * mult })), byId);
-      const cost = P().recipeCost(meal.recipe, byId, SH().buyMult(meal));
+      const cost = P().mealCost(plan, meal);
 
       body.appendChild(h('p.hint', {
         text: 'Порции пересчитаны под вашу норму: коэффициент ×' + u.num(mult, 2) +

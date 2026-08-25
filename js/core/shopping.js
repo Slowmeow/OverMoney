@@ -152,6 +152,32 @@
     return pantry;
   }
 
+  /* Во сколько реально обходится грамм каждого продукта в этом плане.
+   *
+   * Не «цена за килограмм с ценника»: продукты продаются упаковками, и если
+   * ради 300 г риса куплена пачка 800 г, то эти 300 г стоят всю пачку. И наоборот —
+   * то, что взято из кладовой, на этой неделе не стоит ничего, деньги за него
+   * заплачены раньше.
+   *
+   * Отсюда важное свойство: сумма стоимостей всех приёмов пищи в точности равна
+   * итогу списка покупок. Наивный подсчёт занижал её на 38%.
+   */
+  const ratesCache = new WeakMap();
+
+  function unitRates(plan) {
+    const rev = S().revision();
+    const cached = ratesCache.get(plan);
+    if (cached && cached.rev === rev) return cached.rates;
+
+    const list = buildList(plan);
+    const rates = {};
+    list.items.forEach(function (i) {
+      rates[i.product.id] = i.required > 0 ? i.cost / i.required : 0;
+    });
+    ratesCache.set(plan, { rev: rev, rates: rates });
+    return rates;
+  }
+
   /* Человекочитаемое количество: где уместно — в штуках, где нет — в кг/г. */
   function formatAmount(product, amount) {
     if (amount <= 0) return '—';
@@ -180,7 +206,7 @@
 
   window.App = window.App || {};
   window.App.shopping = {
-    aggregate, buildList, costOf, pantryAfter, buyMult, weighStep, roundUp,
+    aggregate, buildList, costOf, pantryAfter, buyMult, weighStep, roundUp, unitRates,
     formatAmount, formatMass, formatPurchase, groupByCategory
   };
 })();

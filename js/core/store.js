@@ -85,6 +85,9 @@
   }
 
   let state = null;
+  // Растёт при каждой записи. По нему кеши понимают, что состояние изменилось,
+  // даже если сумма плана осталась прежней — например, поменялась кладовая.
+  let revision = 0;
 
   function load() {
     invalidate();
@@ -148,6 +151,7 @@
   /* Запись только в браузер — без обращения к общей базе. */
   function persist() {
     invalidate();
+    revision++;
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
@@ -505,6 +509,7 @@
   window.App = window.App || {};
   window.App.store = {
     load, save, get, reset, today, adopt, persist, plan, mealAt,
+    revision: () => revision,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
     recipes, allRecipes, householdRestrictions, activeDiets, blockedBy, isProductAllowed, recipeAvailability,

@@ -256,6 +256,25 @@
     return fresh;
   }
 
+  /* Во что обходится один приём пищи.
+   *
+   * Не «граммы × цена с ценника»: так получается на 38% меньше того, что уходит
+   * в кассе. Считаем по фактическим тратам — переплата за целые упаковки ложится
+   * на те блюда, ради которых упаковка куплена, а взятое из кладовой на этой
+   * неделе не стоит ничего. Сумма по всем приёмам пищи в точности равна итогу
+   * списка покупок. */
+  function mealCost(plan, meal) {
+    if (!meal || !meal.recipe) return 0;
+    const rates = SH().unitRates(plan);
+    return meal.recipe.ing.reduce(function (sum, i) {
+      return sum + i.g * meal.mult * (rates[i.p] || 0);
+    }, 0);
+  }
+
+  function dayCost(plan, day) {
+    return day.meals.reduce((sum, m) => sum + mealCost(plan, m), 0);
+  }
+
   /* Разложить готовое блюдо по тарелкам.
    *
    * Готовим одно, а нормы у людей разные — значит и порции разные. Здесь
@@ -279,12 +298,13 @@
     const nut = meal.nutrition || N().nutritionOf(
       meal.recipe.ing.map(i => ({ p: i.p, g: i.g * meal.mult })), byId);
 
-    // Стоимость именно этой тарелки: берём порцию, которую сегодня едят,
-    // а не закупку. У блюда, сваренного на два дня, закупка вдвое больше,
-    // и делить её между сегодняшними едоками было бы неверно.
-    const mealCost = recipeCost(meal.recipe, byId, meal.mult);
+    // Стоимость именно этой тарелки — по фактическим тратам, а не по ценнику.
+    const total = mealCost(plan, meal);
 
-    const slotKcal = slot.kcal || 1;
+    // Делим на сумму личных долей, а не на общую цифру приёма пищи: обе
+    // округлены по отдельности, и от этого доли не складывались в единицу —
+    // цена блюда расходилась с суммой по людям на пару рублей.
+    const slotKcal = slot.byPerson.reduce((sum, x) => sum + x.kcal, 0) || 1;
     return slot.byPerson.map(function (person) {
       const share = person.kcal / slotKcal;
       return {
@@ -293,7 +313,7 @@
         grams: Math.round(totalWeight * share),
         kcal: Math.round((nut.kcal || 0) * share),
         p: Math.round((nut.p || 0) * share),
-        cost: mealCost * share
+        cost: total * share
       };
     });
   }
@@ -1274,7 +1294,7 @@
   window.App = window.App || {};
   window.App.planner = {
     generate, rebalance, fitToBudget, hardFit, undoHardFit, budgetLimit, makeCtx, refillEmpty, tuneMacros,
-    slotTargets, targetsOf, personShares, mealPortions,
+    slotTargets, targetsOf, personShares, mealPortions, mealCost, dayCost,
     overspendAdvice, applyProductSwap,
     upgradeSuggestions, recipeCost, unitCost, allMeals,
     DAY_NAMES: DAY_NAMES

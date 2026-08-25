@@ -594,6 +594,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .day-date { color: var(--ink-faint); font-size: var(--text-xs); }
 .day-kcal { margin-left: auto; font-size: var(--text-xs); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .day-kcal.warn { color: var(--warn); }
+.day-cost { font-size: var(--text-sm); font-weight: var(--weight-semi); font-variant-numeric: tabular-nums; }
 
 .day-meals { display: flex; flex-direction: column; }
 .meal {
