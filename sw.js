@@ -3,7 +3,7 @@
 /* Номер меняется при каждом обновлении файлов: при активации нового
    service worker старый кеш целиком удаляется, поэтому в браузере
    не может остаться половина старой версии приложения. */
-const CACHE = 'spendings-v7';
+const CACHE = 'spendings-v8';
 
 const ASSETS = [
   './',
@@ -14,6 +14,7 @@ const ASSETS = [
   'js/core/nutrition.js',
   'js/core/sync.js',
   'js/core/store.js',
+  'js/core/receipt.js',
   'js/core/shopping.js',
   'js/core/planner.js',
   'js/ui/helpers.js',

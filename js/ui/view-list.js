@@ -140,11 +140,167 @@
 
   function finishCard(plan, list) {
     const u = U(), h = u.h;
+    const R = window.App.receipt;
+
     return u.card('После закупки', [
       h('p', { text: 'Нажмите, когда вернётесь из магазина: остатки от начатых упаковок ' +
         'перейдут в кладовую, и следующая неделя будет дешевле на их стоимость.' }),
-      u.button('Закупка завершена', () => finish(plan, list), 'primary')
+      h('div.row-actions', {}, [
+        u.button('Закупка завершена', () => finish(plan, list), 'primary'),
+        u.button('Внести чек', () => receiptDialog(plan, list))
+      ]),
+      h('p.hint', { text: R && R.canScan()
+        ? 'Чек можно отсканировать: из QR-кода приложение возьмёт дату и сумму по кассе.'
+        : 'Этот браузер не умеет читать QR-коды — сумму и дату с чека можно вписать вручную.' })
     ]);
+  }
+
+  /* Внесение чека.
+   *
+   * Из QR берутся только дата и сумма: списка товаров в коде нет, его отдаёт
+   * лишь сервис ФНС, которому нужны интернет и авторизация. Обещать разбор
+   * позиций было бы враньём. Зато позиции у нас уже есть — в этом самом
+   * списке покупок, — поэтому сверка сводится к галочкам и правке цен,
+   * а расхождение с суммой чека видно сразу. */
+  function receiptDialog(plan, list) {
+    const u = U(), h = u.h;
+    const R = window.App.receipt;
+    const state = S().get();
+
+    let parsed = null;
+    let camera = null;
+
+    const dateInput = h('input.input', { type: 'date', value: S().today() });
+    const sumInput = h('input.input', { type: 'number', min: '0', step: '1', value: list.total });
+    const qrInput = h('input.input', { type: 'search', placeholder: 't=20260824T1830&s=3155.00&fn=…' });
+    const status = h('p.hint', { text: 'Дата и сумма заполнены расчётными значениями — поправьте по чеку.' });
+    const video = h('video.receipt-video', { playsinline: 'true', muted: 'true' });
+
+    function applyParsed(text) {
+      parsed = R.parseQr(text);
+      if (!parsed) {
+        status.textContent = 'Это не похоже на фискальный QR-код. Впишите дату и сумму вручную.';
+        return;
+      }
+      if (parsed.date) dateInput.value = parsed.date;
+      if (parsed.sum) sumInput.value = parsed.sum;
+      status.textContent = 'Чек распознан: ' + (parsed.date || '') + ' ' + (parsed.time || '') +
+        ', сумма ' + u.money(parsed.sum || 0) + '. Позиции сверьте ниже — в QR их нет.';
+    }
+
+    const fileInput = h('input', {
+      type: 'file', accept: 'image/*', style: { display: 'none' },
+      onchange: function (e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        status.textContent = 'Читаю фотографию…';
+        R.scanImage(file).then(applyParsed).catch(err => { status.textContent = err.message; });
+      }
+    });
+
+    // Позиции берём из своего же списка: отмечено — значит куплено.
+    const lines = [];
+    list.byCategory.forEach(function (group) {
+      group.items.forEach(function (item) {
+        const id = item.product.id;
+        const row = { id: id, item: item, bought: state.listState[id] !== false };
+        const priceBox = h('input.input.rg-input', {
+          type: 'number', min: '0', step: '1', value: item.product.pr,
+          onchange: function (e) {
+            const value = parseFloat(e.target.value);
+            if (value > 0) S().setPrice(id, value);
+          }
+        });
+        const check = h('input.check', {
+          type: 'checkbox', checked: row.bought,
+          onchange: function (e) { row.bought = e.target.checked; }
+        });
+        row.priceBox = priceBox;
+        lines.push(row);
+        row.node = h('div.receipt-row', {}, [
+          check,
+          h('span.receipt-name', { text: item.product.n }),
+          h('span.receipt-qty', { text: SH().formatPurchase(item) }),
+          priceBox
+        ]);
+      });
+    });
+
+    const body = [
+      h('div.row-actions', {}, [
+        R.canScan() ? u.button('Сканировать камерой', function () {
+          status.textContent = 'Наведите камеру на QR-код чека…';
+          video.style.display = 'block';
+          camera = R.scanCamera(video);
+          camera.result.then(function (text) {
+            camera.stop();
+            video.style.display = 'none';
+            applyParsed(text);
+          }).catch(function (err) {
+            camera.stop();
+            video.style.display = 'none';
+            status.textContent = err.message;
+          });
+        }) : null,
+        R.canScan() ? u.button('Загрузить фото чека', () => fileInput.click()) : null
+      ]),
+      video,
+      fileInput,
+      u.field('Строка из QR-кода', qrInput, 'если сканировали чек другим приложением — вставьте сюда'),
+      u.button('Разобрать строку', () => applyParsed(qrInput.value), 'small'),
+      status,
+      h('div.form-grid', {}, [
+        u.field('Дата чека', dateInput),
+        u.field('Сумма по чеку, ₽', sumInput)
+      ]),
+      h('h4.sub-head', { text: 'Что из списка куплено' }),
+      h('p.hint', { text: 'Снимите галочку с того, что не брали, и поправьте цены. ' +
+        'Списка товаров в QR-коде нет — его отдаёт только сервис ФНС, а он требует интернета и входа.' }),
+      h('div.receipt-list', {}, lines.map(l => l.node))
+    ];
+
+    const dlg = u.modal('Внести чек', body, [
+      { label: 'Отмена', onClick: function () { if (camera) camera.stop(); } },
+      {
+        label: 'Записать', cls: 'primary', onClick: function () {
+          if (camera) camera.stop();
+          const actual = parseFloat(sumInput.value) || list.total;
+          const date = dateInput.value || S().today();
+
+          // Не купленное остаётся в списке: план на него по-прежнему рассчитан.
+          lines.forEach(function (l) {
+            if (l.bought) state.listState[l.id] = true;
+            else delete state.listState[l.id];
+          });
+
+          const fresh = SH().buildList(plan);
+          const byCat = {};
+          fresh.byCategory.forEach(g => { byCat[g.cat] = g.sum; });
+
+          state.pantry = SH().pantryAfter(plan, fresh);
+          state.history.push({
+            date: date,
+            planned: fresh.total,
+            actual: actual,
+            budget: S().weeklyBudget().food,
+            kcal: plan.nutrition ? plan.nutrition.week.kcal : null,
+            protein: plan.nutrition ? plan.nutrition.week.p : null,
+            byCat: byCat,
+            receipt: parsed ? { fn: parsed.fn, doc: parsed.doc, sign: parsed.sign } : null
+          });
+          state.listState = {};
+          S().save();
+
+          const diff = Math.round(actual - fresh.total);
+          u.toast(Math.abs(diff) < 20
+            ? 'Чек записан, сходится с расчётом'
+            : 'Чек записан: ' + (diff > 0 ? 'на ' + u.money(diff) + ' больше' : 'на ' + u.money(-diff) + ' меньше') + ' расчёта');
+          window.App.ui.go('reports');
+        }
+      }
+    ]);
+
+    return dlg;
   }
 
   function finish(plan, list) {
