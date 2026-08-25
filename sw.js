@@ -17,11 +17,13 @@ const ASSETS = [
   'js/core/shopping.js',
   'js/core/planner.js',
   'js/ui/helpers.js',
+  'js/ui/charts.js',
   'js/ui/view-dashboard.js',
   'js/ui/view-week.js',
   'js/ui/view-list.js',
   'js/ui/view-pantry.js',
   'js/ui/view-prices.js',
+  'js/ui/view-reports.js',
   'js/ui/view-settings.js',
   'js/app.js',
   'manifest.webmanifest'
@@ -51,6 +53,9 @@ self.addEventListener('fetch', function (event) {
         caches.open(CACHE).then(cache => cache.put(event.request, copy)).catch(() => {});
         return response;
       })
-      .catch(() => caches.match(event.request).then(hit => hit || caches.match('index.html')))
+      .catch(function () {
+        return caches.match(event.request, { ignoreSearch: true })
+          .then(hit => hit || caches.match('index.html'));
+      })
   );
 });
