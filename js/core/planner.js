@@ -237,10 +237,23 @@
     return out;
   }
 
-  /* Планы, собранные до появления персональных приёмов пищи, поля не имеют —
-     считаем его на лету, чтобы старый план не пришлось выбрасывать. */
+  /* Цели приёмов пищи для этого плана.
+   *
+   * План живёт в браузере неделями и переживает обновления приложения, поэтому
+   * сохранённая структура может оказаться старее кода. Так и вышло с разбивкой
+   * по людям: у планов, собранных до её появления, поля byPerson нет, и раскладка
+   * «кому сколько класть» молча не показывалась — пользователю оставалось гадать,
+   * почему обещанного нет. Требовать пересборки ради этого неправильно, поэтому
+   * недостающее досчитывается на месте и записывается обратно в план. */
   function targetsOf(plan) {
-    return plan.slotTargets || slotTargets(S().get().people);
+    const stored = plan.slotTargets;
+    const complete = stored && Object.keys(stored).length &&
+      Object.keys(stored).every(k => stored[k] && stored[k].byPerson && stored[k].byPerson.length);
+    if (complete) return stored;
+
+    const fresh = slotTargets(S().get().people);
+    if (plan.slotTargets !== fresh) plan.slotTargets = fresh;
+    return fresh;
   }
 
   /* Разложить готовое блюдо по тарелкам.
