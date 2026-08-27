@@ -849,6 +849,18 @@
     plan.days = JSON.parse(snap);
   }
 
+  /* Найти приём пищи по координатам, а не по сохранённой ссылке.
+   *
+   * restore() заменяет plan.days разобранной копией, и все ссылки на приёмы
+   * пищи, взятые до отката, указывают на объекты, которых в плане больше нет.
+   * Править их можно сколько угодно — на план это не влияет. Поэтому там, где
+   * между обращениями к приёму пищи возможен откат, его положение хранится
+   * парой «день + слот», а сам объект берётся заново. */
+  function mealAt(plan, dayIndex, slot) {
+    const day = plan.days[dayIndex];
+    return day ? day.meals.find(m => m.slot === slot) || null : null;
+  }
+
   /* Проверка, что удешевление не сломало рацион. */
   function isAcceptable(plan) {
     const s = S().get().settings;
@@ -952,18 +964,25 @@
     const recipes = S().recipes();
     guard = 0;
     while (cost > limit.allowed && guard++ < 20) {
-      const meals = allMeals(plan).filter(m => m.recipe && m.leftoverOf == null);
-      meals.sort(function (a, b) {
-        const ca = recipeCost(a.recipe, byId, a.buy || a.mult) / Math.max(1, a.nutrition.kcal);
-        const cb = recipeCost(b.recipe, byId, b.buy || b.mult) / Math.max(1, b.nutrition.kcal);
+      // Координаты, а не ссылки: внутри цикла случаются откаты, после которых
+      // ссылка на приём пищи перестаёт быть частью плана.
+      const spots = allMeals(plan)
+        .filter(m => m.recipe && m.leftoverOf == null)
+        .map(m => ({ day: m._day, slot: m.slot, meal: m }));
+      spots.sort(function (a, b) {
+        const ca = recipeCost(a.meal.recipe, byId, a.meal.buy || a.meal.mult) / Math.max(1, a.meal.nutrition.kcal);
+        const cb = recipeCost(b.meal.recipe, byId, b.meal.buy || b.meal.mult) / Math.max(1, b.meal.nutrition.kcal);
         return cb - ca;
       });
 
       let improved = false;
-      for (const meal of meals) {
-        const busyToday = otherDishesToday(plan, meal);
+      for (const spot of spots) {
+        const current = mealAt(plan, spot.day, spot.slot);
+        if (!current || !current.recipe) continue;
+
+        const busyToday = otherDishesToday(plan, current);
         const alternatives = recipes
-          .filter(r => r.m.indexOf(meal.slot) !== -1 && r.id !== meal.recipe.id &&
+          .filter(r => r.m.indexOf(current.slot) !== -1 && r.id !== current.recipe.id &&
             busyToday.indexOf(r.id) === -1)
           .map(function (r) {
             const nut = N().recipeNutrition(r, byId);
@@ -974,7 +993,12 @@
 
         for (const alt of alternatives) {
           const snap = snapshot(plan);
+          // Свежая ссылка на каждом обороте: предыдущий откат мог заменить её.
+          const meal = mealAt(plan, spot.day, spot.slot);
+          if (!meal || !meal.recipe) break;
           const removed = meal.recipe.n;
+
+          meal._day = spot.day;
           clearLeftovers(plan, meal);
           meal.recipe = clone(alt.r);
           rebalance(plan, byId);
