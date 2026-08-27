@@ -175,10 +175,31 @@
     return totalCost > 0 ? covered / totalCost : 0;
   }
 
+  /* КБЖУ рецепта из каталога — из заранее посчитанной таблицы.
+   *
+   * Подбор блюда перебирает все подходящие рецепты и у каждого спрашивает
+   * калорийность — по нескольку раз за проход, и так на каждый из 21 приёма
+   * пищи, да ещё внутри подгонки под бюджет. В сумме выходило под тридцать
+   * тысяч пересчётов одного и того же за одну сборку недели: рецепты каталога
+   * за время расчёта не меняются, а КБЖУ у них честно складывался заново
+   * из ингредиентов каждый раз.
+   *
+   * Таблица считается один раз в makeCtx и ключуется САМИМ объектом рецепта,
+   * а не его id. Это не педантизм: в план попадает clone(), состав правят
+   * всегда у копии — и tuneMacros, и замены продуктов, — а id у копии тот же,
+   * что у оригинала. По id правленая копия получила бы КБЖУ нетронутого
+   * каталожного блюда, то есть цифры, которых в тарелке нет. По объекту
+   * копия просто не находится в таблице и считается честно.
+   */
+  function nutritionOfRecipe(ctx, recipe, byId) {
+    const hit = ctx.nut && ctx.nut.get(recipe);
+    return hit || N().recipeNutrition(recipe, byId);
+  }
+
   /* Во сколько раз рецепт придётся масштабировать под этот приём пищи.
      Нужна до общего пересчёта порций, чтобы правильно оценить закупку. */
   function estimateMult(recipe, byId, ctx, slot) {
-    const nut = N().recipeNutrition(recipe, byId);
+    const nut = nutritionOfRecipe(ctx, recipe, byId);
     const target = (ctx.slotTargets[slot] || { kcal: 600 }).kcal;
     return Math.max(MULT_MIN, Math.min(MULT_MAX, target / Math.max(1, nut.total.kcal)));
   }
@@ -420,15 +441,19 @@
     // Считаем цену за килокалорию по остатку упаковок: блюдо из продуктов,
     // которые в списке уже есть, обходится почти даром.
     const slotKcal = (ctx.slotTargets[slot] || { kcal: 600 }).kcal;
-    const costs = candidates.map(function (r) {
-      const nut = N().recipeNutrition(r, byId);
-      const kcal = nut.total.kcal || 1;
+    // КБЖУ каждого кандидата спрашиваем один раз и передаём дальше: ниже оно
+    // нужно трижды — для цены, для оценки порции и для белковой плотности.
+    const nuts = candidates.map(r => nutritionOfRecipe(ctx, r, byId));
+
+    const costs = candidates.map(function (r, idx) {
+      const kcal = nuts[idx].total.kcal || 1;
       const mult = Math.max(0.35, Math.min(3.0, slotKcal / kcal));
       return marginalCost(r, byId, ctx, mult) / (kcal * mult);
     });
     const medianCost = costs.slice().sort((a, b) => a - b)[Math.floor(costs.length / 2)] || 1;
 
     const scored = candidates.map(function (r, idx) {
+      const nut = nuts[idx];
       let score = 0;
       score += pantryCover(r, byId, pantry, 1) * 1.5;      // доесть скоропорт из кладовой
       // Вес 5 выбран замером: перебор значений от 2,5 до 10 на восьми прогонах
@@ -441,13 +466,11 @@
       // Блюдо, которое под этот приём пищи приходится сжимать впятеро или
       // растягивать втрое, здесь не к месту: даже уложившись в границы,
       // оно даёт неестественную порцию и уводит день от нормы.
-      const fitNut = N().recipeNutrition(r, byId);
-      const ideal = slotKcal / Math.max(1, fitNut.total.kcal);
+      const ideal = slotKcal / Math.max(1, nut.total.kcal);
       if (ideal < MULT_COMFORT_LOW) score -= (MULT_COMFORT_LOW - ideal) * 6;
       else if (ideal > MULT_COMFORT_HIGH) score -= (ideal - MULT_COMFORT_HIGH) * 1.5;
 
       if (ctx.proteinDeficit) {
-        const nut = N().recipeNutrition(r, byId);
         score += Math.min(1.2, nut.total.p / Math.max(1, nut.total.kcal) * 60);
       }
       score += Math.random() * (ctx.costFocus ? 0.15 : 0.4);       // чтобы неделя не повторялась дословно
@@ -506,8 +529,14 @@
       const scaled = [];
       day.meals.forEach(function (meal) {
         if (!meal.recipe) return;
-        meal.recipe.ing.forEach(i => scaled.push({ p: i.p, g: i.g * meal.mult }));
-        meal.nutrition = N().nutritionOf(meal.recipe.ing.map(i => ({ p: i.p, g: i.g * meal.mult })), byId);
+        // Один и тот же пересчёт граммов на порцию делался дважды подряд:
+        // сначала в общий список дня, потом заново для самого блюда. Пересчёт
+        // копеечный, но rebalance вызывается после каждой пробы оптимизатора —
+        // около тысячи раз за сборку недели, — и лишний список из двух десятков
+        // объектов на каждый приём пищи набегает в сотни тысяч.
+        const portion = meal.recipe.ing.map(i => ({ p: i.p, g: i.g * meal.mult }));
+        portion.forEach(i => scaled.push(i));
+        meal.nutrition = N().nutritionOf(portion, byId);
       });
       day.nutrition = N().nutritionOf(scaled, byId);
       week.kcal += day.nutrition.kcal;
@@ -566,9 +595,18 @@
      (она пустеет по мере того, как блюда её «съедают») и счётчик повторов. */
   function makeCtx() {
     const state = S().get();
+    const byId = S().productsById();
+    const recipes = S().recipes();
+
+    // КБЖУ всех доступных рецептов — один раз на весь расчёт. Дальше подбор
+    // блюд обращается сюда, а не пересчитывает состав заново на каждый вопрос.
+    const nut = new Map();
+    recipes.forEach(r => { nut.set(r, N().recipeNutrition(r, byId)); });
+
     return {
-      byId: S().productsById(),
-      recipes: S().recipes(),
+      byId: byId,
+      recipes: recipes,
+      nut: nut,
       pantry: Object.assign({}, state.pantry),
       committed: {},                       // что уже оплачено упаковками и сколько из этого съедено
       slotTargets: slotTargets(state.people),
@@ -757,7 +795,7 @@
         .filter(r => r.m.indexOf(worst.slot) !== -1 && r.id !== worst.recipe.id &&
           busyToday.indexOf(r.id) === -1)
         .map(function (r) {
-          const nut = N().recipeNutrition(r, byId);
+          const nut = nutritionOfRecipe(ctx, r, byId);
           return { r: r, density: nut.total.p / Math.max(1, nut.total.kcal) };
         })
         .sort((a, b) => b.density - a.density)[0];
@@ -1002,7 +1040,7 @@
           .filter(r => r.m.indexOf(current.slot) !== -1 && r.id !== current.recipe.id &&
             busyToday.indexOf(r.id) === -1)
           .map(function (r) {
-            const nut = N().recipeNutrition(r, byId);
+            const nut = nutritionOfRecipe(ctx, r, byId);
             return { r: r, perKcal: recipeCost(r, byId, 1) / Math.max(1, nut.total.kcal) };
           })
           .sort((a, b) => a.perKcal - b.perKcal)
