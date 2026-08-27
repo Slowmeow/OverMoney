@@ -56,23 +56,28 @@
   function generate() {
     const u = window.App.ui;
     const store = window.App.store;
-    try {
-      const plan = window.App.planner.generate();
-      const state = store.get();
-      state.plan = plan;
-      state.listState = {};
-      store.save();
 
-      const limit = plan.budget ? plan.budget.food : store.weeklyBudget().food;
-      const diff = limit - plan.cost;
-      u.toast(diff >= 0
-        ? 'Неделя собрана: ' + u.money(plan.cost) + ', остаётся ' + u.money(diff)
-        : 'Собрано за ' + u.money(plan.cost) + ' — на ' + u.money(-diff) + ' больше бюджета');
-      go('week');
-    } catch (err) {
-      console.error(err);
-      u.toast('Не удалось собрать неделю: ' + err.message, 'bad');
-    }
+    // Подбор блюд и подгонка под бюджет считаются в потоке отрисовки —
+    // на телефоне это заметная пауза. Сначала показываем, что работа идёт.
+    u.busy('Собираю неделю…', function () {
+      try {
+        const plan = window.App.planner.generate();
+        const state = store.get();
+        state.plan = plan;
+        state.listState = {};
+        store.save();
+
+        const limit = plan.budget ? plan.budget.food : store.weeklyBudget().food;
+        const diff = limit - plan.cost;
+        u.toast(diff >= 0
+          ? 'Неделя собрана: ' + u.money(plan.cost) + ', остаётся ' + u.money(diff)
+          : 'Собрано за ' + u.money(plan.cost) + ' — на ' + u.money(-diff) + ' больше бюджета');
+        go('week');
+      } catch (err) {
+        console.error(err);
+        u.toast('Не удалось собрать неделю: ' + err.message, 'bad');
+      }
+    });
   }
 
   /* Общая база: подтягиваем при старте и при каждом возвращении к вкладке.

@@ -1105,6 +1105,13 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.bad { background: var(--bad); color: #fff; }
 
+/* Пока идёт тяжёлый расчёт.
+   Сборка недели и подгонка под бюджет считаются в том же потоке, что рисует
+   страницу: на телефоне это до нескольких секунд, в которые ничего не нажимается.
+   Молчать об этом нельзя — со стороны выглядит как зависшее приложение. */
+.busy, .busy .btn { cursor: progress; }
+.busy .btn { opacity: 0.6; pointer-events: none; }
+
 /* ================= печать ================= */
 
 @media print {

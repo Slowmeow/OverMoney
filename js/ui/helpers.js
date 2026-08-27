@@ -113,6 +113,33 @@
     toastTimer = setTimeout(() => { el.className = 'toast'; }, 2600);
   }
 
+  /* Тяжёлый расчёт с обратной связью.
+   *
+   * Сборка недели и подгонка под бюджет считаются в том же потоке, который
+   * рисует страницу. На компьютере это доли секунды, на телефоне — до трёх:
+   * всё это время нажатия не проходят, полосы не двигаются, и приложение
+   * выглядит зависшим.
+   *
+   * Отдать браузеру кадр перед началом работы обязательно, иначе сообщение
+   * «считаю» будет поставлено в очередь на отрисовку, а отрисовка случится
+   * уже после того, как расчёт закончится, — то есть его никто не увидит.
+   * Одного requestAnimationFrame мало: он срабатывает перед отрисовкой,
+   * а не после неё, поэтому за ним идёт setTimeout.
+   */
+  function busy(message, work) {
+    toast(message);
+    document.body.classList.add('busy');
+    requestAnimationFrame(function () {
+      setTimeout(function () {
+        try {
+          work();
+        } finally {
+          document.body.classList.remove('busy');
+        }
+      }, 0);
+    });
+  }
+
   function modal(title, contentNode, actions) {
     const overlay = h('div.modal-overlay', {
       onclick: function (e) { if (e.target === overlay) close(); }
@@ -147,13 +174,17 @@
 
     if (plan.cost > limit) {
       out.push(button('Подстроить жёстко под бюджет', function () {
-        // План берём заново: за время между отрисовкой и нажатием его могла
-        // заменить синхронизация, и прежняя ссылка вела бы в никуда.
-        const live = store.plan();
-        if (!live) return;
-        window.App.planner.hardFit(live);
-        window.App.ui.refresh();
-        showHardFitResult();
+        // Самый долгий расчёт в приложении: до дюжины пересборок недели
+        // подряд. Без предупреждения нажатие выглядит как зависание.
+        busy('Подбираю самый дешёвый вариант…', function () {
+          // План берём заново: за время между отрисовкой и нажатием его могла
+          // заменить синхронизация, и прежняя ссылка вела бы в никуда.
+          const live = store.plan();
+          if (!live) return;
+          window.App.planner.hardFit(live);
+          window.App.ui.refresh();
+          showHardFitResult();
+        });
       }, 'primary'));
     }
 
@@ -319,7 +350,7 @@
 
   window.App = window.App || {};
   window.App.ui = Object.assign(window.App.ui || {}, {
-    h, money, num, signedPct, card, field, input, numberInput, select, button, bar, toast, modal,
+    h, money, num, signedPct, card, field, input, numberInput, select, button, bar, toast, modal, busy,
     hardFitButton, budgetActions, overspendCard, showHardFitResult
   });
 })();
