@@ -143,20 +143,161 @@
     return state;
   }
 
+  /* Приведение чужих данных к ожидаемому виду.
+   *
+   * Через migrate проходит всё, что приложение не писало само: сохранение из
+   * localStorage, файл выгрузки, состояние из общей базы. Верить их форме
+   * нельзя. Раньше и не проверялось: достаточно было, чтобы в файле нашлось
+   * поле settings, — а дальше, если priceLog оказывался строкой вместо
+   * массива, приложение падало на первой же отрисовке. Причём падало
+   * НАВСЕГДА: битое состояние успевало записаться в localStorage и переживало
+   * перезагрузку, так что выхода не оставалось, кроме как стереть хранилище
+   * браузера вместе со всеми ценами и планами.
+   *
+   * Дойти до этого проще, чем кажется: файл выгрузки обрезается при неудачной
+   * пересылке или синхронизации облака, и обрезанный он ломает всё. Поэтому
+   * поле неверного типа не отвергается, а заменяется пустым значением нужного
+   * вида: лучше потерять одно поле, чем всё приложение. */
+  function asArray(value, fallback) {
+    return Array.isArray(value) ? value : fallback;
+  }
+
+  function asObject(value, fallback) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : fallback;
+  }
+
+  /* Список, в котором каждый элемент — объект с нужными полями.
+   *
+   * Проверить сам список мало: Array.isArray([null]) — правда, а первое же
+   * обращение к полю внутри падает. Одна такая запись в журнале цен валила
+   * весь каталог, потому что каталог обходит журнал целиком.
+   *
+   * Негодные записи выбрасываются молча и поодиночке: файл выгрузки — это
+   * годы правок цен, и терять их все из-за одной битой строки нельзя. */
+  function asRecords(value, required) {
+    return asArray(value, []).filter(function (item) {
+      if (!asObject(item, null)) return false;
+      return required.every(k => item[k] !== undefined && item[k] !== null);
+    });
+  }
+
+  /* Кладовая и ей подобные: ключ — код продукта, значение обязано быть числом.
+     Строка «много» вместо количества ломает всю арифметику ниже по течению. */
+  function asNumberMap(value) {
+    const src = asObject(value, {});
+    const out = {};
+    Object.keys(src).forEach(function (k) {
+      const n = Number(src[k]);
+      if (isFinite(n) && n > 0) out[k] = n;
+    });
+    return out;
+  }
+
+  /* Проверка плана недели.
+   *
+   * План — самая развесистая структура в состоянии: семь дней, в каждом
+   * приёмы пищи, в каждом рецепт со списком ингредиентов. Обходят её десятки
+   * мест, и почти все — без оглядки, потому что план всегда строило само
+   * приложение. Но приходит он из хранилища и из файла выгрузки, а туда
+   * попадает всякое: обрезанная при пересылке копия, сохранение от версии
+   * с другой формой данных.
+   *
+   * Чиним посильное, отбрасываем безнадёжное. Приём пищи с рассыпавшимся
+   * рецептом становится пустым — такое приложение переживает, оно умеет
+   * дозаполнять пустые ячейки. А вот план без норм или без подсчитанного
+   * КБЖУ восстановить нечем: эти цифры считает планировщик, которого здесь
+   * нет. Такой план лучше забыть — неделя пересобирается одной кнопкой,
+   * а вот выковырять окирпиченное приложение из браузера человеку нечем. */
+  function sanePlan(plan) {
+    if (!asObject(plan, null)) return null;
+    if (!Array.isArray(plan.days) || !plan.days.length) return null;
+    if (!asObject(plan.targets, null) || !asObject(plan.nutrition, null)) return null;
+
+    plan.days = plan.days.filter(d => asObject(d, null) && Array.isArray(d.meals));
+    if (!plan.days.length) return null;
+
+    plan.days.forEach(function (day) {
+      day.meals = day.meals.filter(m => asObject(m, null));
+      day.meals.forEach(function (meal) {
+        const r = asObject(meal.recipe, null);
+        const ingOk = r && Array.isArray(r.ing) &&
+          r.ing.every(i => asObject(i, null) && i.p !== undefined);
+        if (!ingOk) { meal.recipe = null; meal.leftoverOf = null; return; }
+        // Количество обязано быть числом: на него умножают в каждом расчёте,
+        // и одна строка превращает всю неделю в NaN.
+        r.ing.forEach(i => { const g = Number(i.g); i.g = isFinite(g) && g >= 0 ? g : 0; });
+        const mult = Number(meal.mult);
+        meal.mult = isFinite(mult) && mult > 0 ? mult : 1;
+      });
+    });
+
+    plan.notes = asArray(plan.notes, []);
+    plan.swaps = asRecords(plan.swaps, ['from', 'to']);
+    plan.replacements = asRecords(plan.replacements, ['to']);
+    return plan;
+  }
+
   /* Дозаполняем поля, появившиеся в новых версиях, чтобы старые сохранения не ломались. */
   function migrate(saved) {
+    saved = asObject(saved, {});
+
+    /* Два отдельных набора значений по умолчанию, и это не расточительность.
+     *
+     * Object.assign(base, saved) возвращает тот самый base, а не копию: он его
+     * же и портит. Значит запасное значение вида base.regulars, взятое после
+     * этой строки, — уже не значение по умолчанию, а то самое мусорное поле
+     * из файла, от которого мы и защищаемся. Проверка при этом выглядит
+     * совершенно правильной и молча пропускает всё. Поэтому pristine
+     * заводится заранее и до конца остаётся нетронутым. */
+    const pristine = defaultState();
     const base = defaultState();
     const merged = Object.assign(base, saved);
-    merged.settings = Object.assign(base.settings, saved.settings || {});
-    merged.people = (saved.people && saved.people.length)
-      ? saved.people.map(p => Object.assign(defaultPerson(p.id, p.name, p.sex), p))
-      : base.people;
+
+    merged.settings = Object.assign(pristine.settings, asObject(saved.settings, {}));
+    merged.regulars = saved.regulars === undefined
+      ? pristine.regulars
+      : asRecords(saved.regulars, ['p']);
+    merged.pantry = asNumberMap(saved.pantry);
+    merged.excluded = asObject(saved.excluded, {});
+    merged.prices = asObject(saved.prices, {});
+    merged.priceLog = asRecords(saved.priceLog, ['p', 'pr']);
+    merged.brandChoice = asObject(saved.brandChoice, {});
+    merged.dismissedSwaps = asObject(saved.dismissedSwaps, {});
+    // Названия магазинов идут в подписи и в выпадающие списки — там ждут строку.
+    merged.stores = asArray(saved.stores, pristine.stores).filter(x => typeof x === 'string');
+    if (!merged.stores.length) merged.stores = pristine.stores;
+    // Свой продукт без кода или названия не продукт: по коду его ищут рецепты,
+    // по названию сортируют список цен.
+    merged.customProducts = asRecords(saved.customProducts, ['id', 'n']);
+    merged.customRecipes = asRecords(saved.customRecipes, ['id', 'n', 'ing'])
+      .filter(r => Array.isArray(r.ing) && Array.isArray(r.m));
+    merged.disabledRecipes = asObject(saved.disabledRecipes, {});
+    merged.listState = asObject(saved.listState, {});
+    merged.history = asRecords(saved.history, []);
+    merged.plan = sanePlan(asObject(saved.plan, null));
+
+    // Профили — самое чувствительное место: по ним считаются нормы питания.
+    // Строка вместо списка профилей раньше валила расчёт насмерть, потому что
+    // у неё есть length, но нет map.
+    const savedPeople = asArray(saved.people, []).filter(p => asObject(p, null));
+    merged.people = savedPeople.length
+      ? savedPeople.map(p => Object.assign(defaultPerson(p.id, p.name, p.sex), p))
+      : pristine.people;
 
     // Раньше приёмы пищи были общими на всех. Переносим их в каждый профиль,
     // чтобы дальше настраивать по человеку.
-    const commonMeals = (saved.settings && saved.settings.mealsActive) || base.settings.mealsActive;
+    const commonMeals = asArray(asObject(saved.settings, {}).mealsActive, pristine.settings.mealsActive);
+    merged.settings.mealsActive = asArray(merged.settings.mealsActive, pristine.settings.mealsActive);
     merged.people.forEach(function (p) {
       if (!Array.isArray(p.meals) || !p.meals.length) p.meals = commonMeals.slice();
+      if (!Array.isArray(p.diets)) p.diets = [];
+      // Числа, по которым считается норма. Строка «семьдесят» вместо веса
+      // превратила бы всю арифметику в NaN и тихо испортила бы весь план.
+      ['age', 'height', 'weight', 'activity'].forEach(function (k) {
+        const n = Number(p[k]);
+        if (!isFinite(n) || n <= 0) p[k] = defaultPerson(p.id, p.name, p.sex)[k];
+        else p[k] = n;
+      });
     });
 
     // Цены, правленные до появления журнала, переносим в него — иначе

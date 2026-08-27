@@ -14,7 +14,13 @@
         if (value === null || value === undefined || value === false) return;
         if (key === 'class') el.className += (el.className ? ' ' : '') + value;
         else if (key === 'text') el.textContent = value;
-        else if (key === 'html') el.innerHTML = value;
+        // Ветки html: здесь нет и не будет. Она была, ей никто не пользовался,
+        // и это ровно тот случай, когда удобство обходится дорого: в текстах
+        // приложения нет ничего своего — там названия продуктов, марки,
+        // магазины и имена профилей, то есть строки, пришедшие из файла
+        // выгрузки. Один вызов h(..., {html: product.n}) превратил бы такой
+        // файл в способ выполнить чужой код в браузере. Всё пишется
+        // через textContent, и написанное остаётся текстом.
         else if (key === 'style' && typeof value === 'object') Object.assign(el.style, value);
         else if (key.slice(0, 2) === 'on' && typeof value === 'function') el.addEventListener(key.slice(2), value);
         else if (key === 'value') el.value = value;
