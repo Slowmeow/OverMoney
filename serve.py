@@ -12,14 +12,14 @@
 Запуск:  python serve.py [порт]
 """
 import http.server
-import socketserver
 import socket
 import sys
 import os
 import json
 import threading
+import gzip
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8777
+PORT = next((int(a) for a in sys.argv[1:] if a.isdigit()), 8777)
 
 # Общая база: телефон и компьютер работают с одним файлом, поэтому цены,
 # кладовая и планы у них всегда совпадают.
@@ -47,6 +47,12 @@ def write_data(payload):
 
 
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
+    # HTTP/1.1 держит соединение открытым, поэтому двадцать с лишним файлов
+    # страницы едут по одному каналу, а не по двадцати с лишним. На телефоне
+    # через Wi-Fi это и есть разница между «секунда» и «сразу»: каждое новое
+    # соединение стоит рукопожатия, а рукопожатие — это круг до роутера.
+    protocol_version = 'HTTP/1.1'
+
     # ---------- общая база ----------
 
     def _send_json(self, code, payload):
@@ -62,16 +68,53 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             with DATA_LOCK:
                 self._send_json(200, read_data())
             return
+        if self._send_gzipped():
+            return
         super().do_GET()
 
+    # Код, разметка и стили — это текст, который жмётся вчетверо. По кабелю
+    # разницы не видно, а по Wi-Fi на телефон едет 90 КБ вместо 384.
+    GZIP_TYPES = ('.js', '.css', '.html', '.json', '.webmanifest', '.svg')
+
+    def _send_gzipped(self):
+        path = self.path.split('?')[0]
+        if not path.endswith(self.GZIP_TYPES):
+            return False
+        if 'gzip' not in self.headers.get('Accept-Encoding', ''):
+            return False
+
+        full = self.translate_path(self.path)
+        try:
+            with open(full, 'rb') as fh:
+                body = gzip.compress(fh.read(), 6)
+        except OSError:
+            return False
+
+        self.send_response(200)
+        self.send_header('Content-Type', self.guess_type(full))
+        self.send_header('Content-Encoding', 'gzip')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        if self.command != 'HEAD':
+            self.wfile.write(body)
+        return True
+
     def do_PUT(self):
+        # Тело читаем всегда, даже если отвечаем отказом: соединение живёт
+        # дальше, и непрочитанные байты сервер принял бы за начало
+        # следующего запроса.
+        try:
+            length = int(self.headers.get('Content-Length') or 0)
+        except (ValueError, TypeError):
+            length = 0
+        raw = self.rfile.read(length) if length > 0 else b''
+
         if self.path.split('?')[0] != '/api/state':
             self.send_error(404)
             return
         try:
-            length = int(self.headers.get('Content-Length') or 0)
-            incoming = json.loads(self.rfile.read(length).decode('utf-8'))
-        except (ValueError, TypeError):
+            incoming = json.loads(raw.decode('utf-8'))
+        except (ValueError, TypeError, UnicodeDecodeError):
             self._send_json(400, {'error': 'битый запрос'})
             return
 
@@ -127,9 +170,44 @@ def local_addresses():
     return found
 
 
+class Server(http.server.ThreadingHTTPServer):
+    """Каждый запрос — в своём потоке.
+
+    С HTTP/1.1 это обязательно, а не «на будущее»: соединение теперь живёт
+    между запросами, и однопоточный сервер, заснув на одном открытом канале,
+    перестал бы отвечать всем остальным. Раньше однопоточность просто
+    замедляла загрузку, теперь она бы её остановила.
+    """
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+def open_browser(url):
+    """Открыть браузер, но только когда порт уже отвечает.
+
+    В прежнем start.bat браузер стартовал раньше питона и успевал получить
+    отказ в соединении — человек видел «не удаётся получить доступ к сайту»
+    и жал F5. Отсюда и бралось «долго запускается»: приложение было готово
+    за четверть секунды, но показать этого было некому.
+    """
+    def wait():
+        import time
+        import webbrowser
+        for _ in range(200):                       # не дольше 10 секунд
+            try:
+                socket.create_connection(('127.0.0.1', PORT), 0.2).close()
+                webbrowser.open(url)
+                return
+            except OSError:
+                time.sleep(0.05)
+    threading.Thread(target=wait, daemon=True).start()
+
+
 if __name__ == '__main__':
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(('', PORT), NoCacheHandler) as httpd:
+    with Server(('', PORT), NoCacheHandler) as httpd:
+        if '--no-browser' not in sys.argv:
+            open_browser('http://localhost:%d/' % PORT)
+
         print()
         print('  Продукты по бюджету — сервер запущен')
         print()
