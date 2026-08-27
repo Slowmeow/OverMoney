@@ -78,7 +78,12 @@
       return protPerBase > 0.005 ? perBase / protPerBase : Infinity;
     }
     const kcalPerBase = product.k / 100 * e;
-    return kcalPerBase > 0.01 ? perBase / kcalPerBase : perBase * 100;
+    // Бесконечность, а не «очень дорого»: продукт без калорий не может быть
+    // источником калорий ни за какие деньги, и сравнивать его с едой нельзя.
+    // Прежняя заглушка perBase * 100 давала конечное число, и достаточно
+    // дешёвый продукт с нулевым КБЖУ — такой легко завести своей рукой —
+    // обошёл бы настоящую еду в поиске самой выгодной замены.
+    return kcalPerBase > 0.01 ? perBase / kcalPerBase : Infinity;
   }
 
   function recipeCost(recipe, byId, mult) {
@@ -771,7 +776,16 @@
 
   function allMeals(plan) {
     const out = [];
-    plan.days.forEach((d, di) => d.meals.forEach(m => { m._day = di; out.push(m); }));
+    plan.days.forEach(function (d, di) {
+      d.meals.forEach(function (m) {
+        // Скрытым от перечисления, чтобы номер дня не попадал ни в сохранение,
+        // ни в общую базу: это рабочая пометка на время расчёта, а не часть
+        // плана. Сохранённая, она переживала бы перестройку плана и врала бы
+        // о том, в каком дне стоит блюдо.
+        Object.defineProperty(m, '_day', { value: di, writable: true, configurable: true, enumerable: false });
+        out.push(m);
+      });
+    });
     return out;
   }
 
@@ -1096,25 +1110,31 @@
     const ATTEMPTS = 3;
     let best = null;
 
-    for (let i = 0; i < stages.length; i++) {
-      const stage = stages[i];
-      if (stage.floor < floorRatio) continue;              // ниже безопасного не опускаемся
+    // Настройки человека здесь одалживаются, а не меняются: ступени подгонки
+    // временно занижают порог белка и поднимают лимит повторов. Вернуть их
+    // обязательно при любом исходе — сорвись расчёт на середине, человек
+    // остался бы с молча ослабленными требованиями навсегда.
+    try {
+      for (let i = 0; i < stages.length; i++) {
+        const stage = stages[i];
+        if (stage.floor < floorRatio) continue;            // ниже безопасного не опускаемся
 
-      settings.proteinFloor = stage.floor;
-      settings.maxRepeat = stage.repeat;
+        settings.proteinFloor = stage.floor;
+        settings.maxRepeat = stage.repeat;
 
-      for (let a = 0; a < ATTEMPTS; a++) {
-        // Пересобираем с нуля в режиме экономии: на жёстком бюджете важен сам
-        // набор блюд, а не косметические замены в уже собранном меню.
-        const attempt = generate({ costFocus: true });
-        if (!best || attempt.cost < best.cost) best = attempt;
-        if (best.cost <= limit.allowed) break;
+        for (let a = 0; a < ATTEMPTS; a++) {
+          // Пересобираем с нуля в режиме экономии: на жёстком бюджете важен сам
+          // набор блюд, а не косметические замены в уже собранном меню.
+          const attempt = generate({ costFocus: true });
+          if (!best || attempt.cost < best.cost) best = attempt;
+          if (best.cost <= limit.allowed) break;
+        }
+        if (best && best.cost <= limit.allowed) break;
       }
-      if (best && best.cost <= limit.allowed) break;
+    } finally {
+      settings.proteinFloor = original.proteinFloor;
+      settings.maxRepeat = original.maxRepeat;
     }
-
-    settings.proteinFloor = original.proteinFloor;
-    settings.maxRepeat = original.maxRepeat;
 
     // Если ослабление не помогло, исходный план всё равно не портим.
     if (best && best.cost < plan.cost) {
