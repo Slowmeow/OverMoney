@@ -215,6 +215,10 @@ if __name__ == '__main__':
         for ip in local_addresses():
             print('  С телефона по Wi-Fi: http://%s:%d/' % (ip, PORT))
         print()
+        if os.path.exists(os.path.join(os.path.dirname(DATA_FILE), 'overmoney.html')):
+            print('  Версия для телефона одним файлом: overmoney.html')
+            print('  (собрать заново — python build.py)')
+            print()
         print('  Кеширование отключено: правки в коде видны сразу после F5.')
         print('  Окно не закрывать. Остановить — Ctrl+C.')
         print()
