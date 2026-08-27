@@ -104,6 +104,33 @@
   // даже если сумма плана осталась прежней — например, поменялась кладовая.
   let revision = 0;
 
+  /* Умеет ли браузер вообще что-то запомнить.
+   *
+   * Проверять надо записью, а не наличием localStorage: объект есть почти
+   * везде, а работает он не везде. Файл, открытый прямо из мессенджера,
+   * попадает в браузер по адресу content:// или file://, и для таких страниц
+   * браузер хранилища не даёт — либо запрещает запись, либо стирает её при
+   * закрытии вкладки. То же самое в режиме инкогнито при переполнении.
+   *
+   * Промолчать здесь нельзя. Приложение выглядело бы полностью рабочим:
+   * неделя собирается, цены правятся, кладовая заполняется — а после
+   * закрытия вкладки от всего этого не остаётся ничего, и человек узнаёт
+   * об этом, потратив вечер. */
+  let storageOk = null;
+
+  function storageAvailable() {
+    if (storageOk !== null) return storageOk;
+    try {
+      const probe = KEY + '.probe';
+      localStorage.setItem(probe, '1');
+      storageOk = localStorage.getItem(probe) === '1';
+      localStorage.removeItem(probe);
+    } catch (e) {
+      storageOk = false;
+    }
+    return storageOk;
+  }
+
   function load() {
     invalidate();
     try {
@@ -164,13 +191,26 @@
   }
 
   /* Запись только в браузер — без обращения к общей базе. */
+  let warnedAboutStorage = false;
+
   function persist() {
     invalidate();
     revision++;
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (e) {
-      alert('Не удалось сохранить данные: ' + e.message);
+      storageOk = false;
+      // Ровно один раз за сеанс. Раньше здесь был alert на каждую запись,
+      // а записи идут на каждое действие: не сумев сохранить, приложение
+      // заваливало человека одинаковыми окнами, и работать становилось
+      // невозможно ровно тогда, когда и так всё плохо.
+      if (!warnedAboutStorage) {
+        warnedAboutStorage = true;
+        console.warn('Не удалось сохранить данные:', e);
+        alert('Браузер не даёт сохранить данные: ' + e.message +
+          '\n\nРаботать можно, но после закрытия вкладки всё пропадёт. ' +
+          'Выгрузите копию через «Настройки → Данные».');
+      }
     }
   }
 
@@ -523,7 +563,7 @@
 
   window.App = window.App || {};
   window.App.store = {
-    load, save, get, reset, today, localDate, adopt, persist, plan, mealAt,
+    load, save, get, reset, today, localDate, adopt, persist, plan, mealAt, storageAvailable,
     revision: () => revision,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,

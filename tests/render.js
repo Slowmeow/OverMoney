@@ -78,8 +78,49 @@ SCREENS.forEach(function (name) {
 console.log('\n  ошибок в консоли: ' + errors.length);
 errors.slice(0, 5).forEach(e => console.log('    ! ' + e.slice(0, 160)));
 
+/* Отдельно — поведение там, где браузер не даёт хранилища.
+ *
+ * Так открывается файл, запущенный прямо из мессенджера: страница живёт
+ * по адресу content://, и запись в localStorage запрещена. Приложение при
+ * этом выглядит совершенно рабочим — неделя собирается, цены правятся, —
+ * а после закрытия вкладки не остаётся ничего. Проверяем, что оно
+ * предупреждает, и что предупреждает один раз, а не на каждую запись. */
+console.log('\n  Хранилище запрещено (открытие прямо из мессенджера):');
+
+const blocked = new JSDOM(fs.readFileSync(BUNDLE, 'utf8'), {
+  runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://localhost/'
+});
+Object.defineProperty(blocked.window, 'localStorage', {
+  configurable: true,
+  value: {
+    getItem: () => null,
+    setItem: () => { throw new Error('SecurityError'); },
+    removeItem: () => {}
+  }
+});
+let alerts = 0;
+blocked.window.alert = () => { alerts++; };
+// Приложение честно пишет причину в консоль — здесь это ожидаемо, и полный
+// след вызовов только мешает читать вывод теста.
+blocked.window.console.warn = () => {};
+blocked.window.document.dispatchEvent(new blocked.window.Event('DOMContentLoaded', { bubbles: true }));
+
+const B = blocked.window.App;
+B.store.load();
+const warnText = B.views.dashboard.render().textContent;
+for (let i = 0; i < 20; i++) B.store.persist();
+
+const detected = B.store.storageAvailable() === false;
+const warned = /ничего сохранить/.test(warnText);
+const quiet = alerts === 1;
+console.log('    недоступность распознана: ' + detected);
+console.log('    предупреждение на экране: ' + warned);
+console.log('    окон на 20 записей: ' + alerts + (quiet ? '' : '  <- должно быть 1'));
+if (!detected || !warned || !quiet) broken++;
+
 if (broken || errors.length) {
-  console.log('  ПРОВАЛЕНО');
+  console.log('\n  ПРОВАЛЕНО');
   process.exit(1);
 }
-console.log('  Все ' + SCREENS.length + ' экранов отрисовались без ошибок.');
+console.log('\n  Все ' + SCREENS.length + ' экранов отрисовались без ошибок, ' +
+  'потеря хранилища распознаётся.');
