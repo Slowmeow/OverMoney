@@ -5,8 +5,23 @@
 
   const KEY = 'spendings.v1';
 
+  /* Дата в виде ГГГГ-ММ-ДД по местному календарю.
+   *
+   * Через toISOString() так делать нельзя, хотя соблазнительно коротко:
+   * он переводит время в UTC, а Россия вся к востоку от него. Полночь 27-го
+   * в Москве — это 26-е 21:00 по UTC, поэтому toISOString отдавал вчерашний
+   * день. В журнале цен это ставило чекам вчерашнюю дату каждую ночь
+   * до трёх часов, а в плане недели расходилось с названием дня:
+   * строка «Четверг» несла в себе дату среды. */
+  function localDate(date) {
+    const d = date || new Date();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+
   function today() {
-    return new Date().toISOString().slice(0, 10);
+    return localDate();
   }
 
   function defaultPerson(id, name, sex) {
@@ -508,7 +523,7 @@
 
   window.App = window.App || {};
   window.App.store = {
-    load, save, get, reset, today, adopt, persist, plan, mealAt,
+    load, save, get, reset, today, localDate, adopt, persist, plan, mealAt,
     revision: () => revision,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,

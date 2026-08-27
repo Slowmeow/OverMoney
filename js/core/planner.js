@@ -531,9 +531,12 @@
 
     const days = [];
     for (let d = 0; d < 7; d++) {
-      const date = new Date(start.getTime() + d * 86400000);
+      // Прибавляем календарный день, а не 24 часа: при переходе на летнее
+      // время сутки длятся 23 или 25 часов, и арифметика по миллисекундам
+      // рано или поздно промахивается мимо полуночи.
+      const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + d);
       days.push({
-        date: date.toISOString().slice(0, 10),
+        date: S().localDate(date),
         name: DAY_NAMES[(date.getDay() + 6) % 7],
         meals: slots.map(slot => ({ slot: slot, recipe: null, mult: 1, buy: 1, leftoverOf: null }))
       });
