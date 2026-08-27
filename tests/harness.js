@@ -34,6 +34,16 @@ function makeEnv(initialState) {
 
   const sandbox = {
     console, setTimeout, clearTimeout, setInterval, clearInterval, Promise,
+
+    /* Math передаём внутрь намеренно, и это не мелочь.
+     *
+     * vm.createContext даёт песочнице собственный набор встроенных объектов:
+     * её Math — другой объект, не тот, что у нас снаружи. Значит подмена
+     * Math.random посевом до планировщика просто не доходила бы, а тесты
+     * при этом честно печатали бы «фиксированные посевы» и давали бы разный
+     * результат при каждом запуске. Проверка, которая врёт о своей
+     * повторяемости, хуже отсутствующей: на неё ссылаются в спорах. */
+    Math, Date, JSON,
     localStorage: {
       getItem: k => (k in storage ? storage[k] : null),
       setItem: (k, v) => { storage[k] = String(v); },

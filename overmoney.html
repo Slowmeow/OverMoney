@@ -3880,9 +3880,15 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   /* Блюда этого же дня, кроме самого заменяемого. Нужно там, где приём пищи
      меняют задним числом — ради белка или ради бюджета: эти замены выбирали
      блюдо по слоту, не глядя на остальной день, и возвращали дубль,
-     который подбор только что аккуратно обошёл. */
-  function otherDishesToday(plan, meal) {
-    const day = plan.days[meal._day];
+     который подбор только что аккуратно обошёл.
+
+     Номер дня передаётся отдельным доводом, а не берётся из пометки на самом
+     приёме пищи. Пометка живёт только до отката: restore() разбирает план
+     заново, и у свежих объектов её нет. Молча получив undefined, функция
+     возвращала пустой список — то есть «сегодня ничего не занято», — и запрет
+     на повтор внутри дня тихо отключался. */
+  function otherDishesToday(plan, dayIndex, meal) {
+    const day = plan.days[dayIndex];
     if (!day) return [];
     return day.meals.filter(m => m !== meal && m.recipe).map(m => m.recipe.id);
   }
@@ -4098,6 +4104,10 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
      это молчаливо пропущенный приём пищи, поэтому дозаполняем всегда. */
   function refillEmpty(plan, ctx, byId) {
     let filled = 0;
+    // Дозаполнение идёт после замен, а замены ставят блюда мимо счётчика
+    // подбора. Не сверившись с меню, дозаполнение поставило бы третий раз
+    // то, что уже стоит дважды, — по своим устаревшим данным.
+    ctx.usage = usageInPlan(plan);
     plan.days.forEach(function (day) {
       day.meals.forEach(function (meal) {
         if (meal.recipe) return;
@@ -4267,10 +4277,13 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       });
       const worst = meals[0];
 
-      const busyToday = otherDishesToday(plan, worst);
+      const busyToday = otherDishesToday(plan, worst._day, worst);
+      // Лимит повторов за неделю замена обязана уважать так же, как подбор:
+      // иначе белок добирается тем, что одно блюдо расставляется по всей неделе.
+      const used = usageInPlan(plan);
       const better = ctx.recipes
         .filter(r => r.m.indexOf(worst.slot) !== -1 && r.id !== worst.recipe.id &&
-          busyToday.indexOf(r.id) === -1)
+          busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < settings.maxRepeat)
         .map(function (r) {
           const nut = nutritionOfRecipe(ctx, r, byId);
           return { r: r, density: nut.total.p / Math.max(1, nut.total.kcal) };
@@ -4281,12 +4294,29 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       const currentDensity = worst.nutrition.p / Math.max(1, worst.nutrition.kcal);
       if (better.density <= currentDensity) break;
 
-      clearLeftovers(plan, worst);
+      clearLeftovers(plan, worst._day, worst.slot);
       worst.recipe = clone(better.r);
       plan.replacements.push({ reason: 'protein', to: better.r.n });
       rebalance(plan, byId);
       refillEmpty(plan, ctx, byId);
     }
+  }
+
+  /* Сколько раз каждое блюдо уже стоит в меню — по самому меню, а не по
+     счётчику подбора.
+   *
+   * Счётчик ctx.usage считает только то, что поставил подбор. Замены —
+   * ради белка и ради бюджета — ставят блюда мимо него, и счётчик отстаёт
+   * от действительности. Спрашивать надо у плана: он единственный знает,
+   * что там на самом деле лежит. */
+  function usageInPlan(plan) {
+    const used = {};
+    plan.days.forEach(function (day) {
+      day.meals.forEach(function (m) {
+        if (m.recipe) used[m.recipe.id] = (used[m.recipe.id] || 0) + 1;
+      });
+    });
+    return used;
   }
 
   function allMeals(plan) {
@@ -4304,11 +4334,12 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     return out;
   }
 
-  /* Если у блюда был «второй день», при замене его нужно снять. */
-  function clearLeftovers(plan, meal) {
+  /* Если у блюда был «второй день», при замене его нужно снять.
+     День указывается явно — по той же причине, что и в otherDishesToday. */
+  function clearLeftovers(plan, dayIndex, slot) {
     plan.days.forEach(function (day) {
       day.meals.forEach(function (m) {
-        if (m.leftoverOf === meal._day && m.slot === meal.slot) {
+        if (m.leftoverOf === dayIndex && m.slot === slot) {
           m.recipe = null;
           m.leftoverOf = null;
         }
@@ -4512,10 +4543,15 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
         const current = mealAt(plan, spot.day, spot.slot);
         if (!current || !current.recipe) continue;
 
-        const busyToday = otherDishesToday(plan, current);
+        const busyToday = otherDishesToday(plan, spot.day, current);
+        // Дешевле всего расставить одно и то же блюдо на всю неделю, и раньше
+        // подгонка именно к этому и скатывалась: замены выбирались по цене,
+        // не глядя на то, сколько раз это блюдо уже стоит в меню. Экономия
+        // получалась настоящая, а неделя — несъедобная.
+        const used = usageInPlan(plan);
         const alternatives = recipes
           .filter(r => r.m.indexOf(current.slot) !== -1 && r.id !== current.recipe.id &&
-            busyToday.indexOf(r.id) === -1)
+            busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < ctx.settings.maxRepeat)
           .map(function (r) {
             const nut = nutritionOfRecipe(ctx, r, byId);
             return { r: r, perKcal: recipeCost(r, byId, 1) / Math.max(1, nut.total.kcal) };
@@ -4530,8 +4566,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
           if (!meal || !meal.recipe) break;
           const removed = meal.recipe.n;
 
-          meal._day = spot.day;
-          clearLeftovers(plan, meal);
+          clearLeftovers(plan, spot.day, spot.slot);
           meal.recipe = clone(alt.r);
           rebalance(plan, byId);
           refillEmpty(plan, ctx, byId);

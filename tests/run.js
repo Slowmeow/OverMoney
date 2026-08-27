@@ -232,12 +232,6 @@ const protShare = runs.map(p => p.nutrition.week.p / p.targets.week.p);
 ok('белок не опускается ниже порога', Math.min(...protShare) >= s.proteinFloor - 0.001,
   'худший прогон ' + (Math.min(...protShare) * 100).toFixed(0) + '% при пороге ' + (s.proteinFloor * 100).toFixed(0) + '%');
 
-const dupDay = runs.reduce((n, p) => n + p.days.reduce(function (m, day) {
-  const ids = day.meals.filter(x => x.recipe).map(x => x.recipe.id);
-  return m + (ids.length - new Set(ids).size);
-}, 0), 0);
-ok('одно блюдо не ставится дважды в один день', dupDay === 0, dupDay + ' повторов внутри дня');
-
 const badMult = runs.reduce((n, p) => n + planner.allMeals(p).filter(m => m.recipe && !(m.mult > 0)).length, 0);
 ok('у каждого блюда положительная порция', badMult === 0);
 
@@ -247,6 +241,47 @@ ok('вчерашнее блюдо не закупается второй раз'
 
 const costMatch = runs.filter(p => p.cost !== shopping.costOf(p)).length;
 ok('записанная стоимость плана совпадает с пересчётом', costMatch === 0, costMatch + ' расхождений из ' + runs.length);
+
+// ───────────────────────────────────────────────── редкие поломки
+
+/* Восьми прогонов мало для того, что ломается изредка.
+ *
+ * Повтор блюда внутри дня возникал в семи процентах планов: подгонка под
+ * бюджет теряла запрет «то же самое сегодня» и ставила чебуреки и на обед,
+ * и на ужин. На восьми посевах это не выпало ни разу, и проверка честно
+ * показывала «пройдено». Поэтому структурные свойства — те, что должны
+ * держаться всегда и проверяются дёшево, — гоняются по широкой выборке. */
+section('Редкие поломки, 40 посевов');
+
+const wide = [];
+for (let seed = 100; seed < 140; seed++) wide.push(withSeed(seed, () => planner.generate()));
+
+const dupDay = wide.reduce((n, p) => n + p.days.reduce(function (m, day) {
+  const ids = day.meals.filter(x => x.recipe).map(x => x.recipe.id);
+  return m + (ids.length - new Set(ids).size);
+}, 0), 0);
+ok('одно блюдо не ставится дважды в один день', dupDay === 0,
+  dupDay + ' повторов на ' + wide.length + ' планов');
+
+const overRepeat = wide.filter(function (p) {
+  const used = {};
+  planner.allMeals(p).forEach(m => { if (m.recipe) used[m.recipe.id] = (used[m.recipe.id] || 0) + 1; });
+  return Object.keys(used).some(k => used[k] > s.maxRepeat);
+});
+ok('лимит повторов за неделю соблюдается', overRepeat.length === 0,
+  overRepeat.length + ' планов сверх лимита ' + s.maxRepeat);
+
+const orphanLeftover = wide.reduce((n, p) => n + planner.allMeals(p).filter(function (m) {
+  if (m.leftoverOf == null) return false;
+  const cook = p.days[m.leftoverOf] && p.days[m.leftoverOf].meals.find(x => x.slot === m.slot);
+  return !cook || !cook.recipe || cook.recipe.id !== m.recipe.id;
+}).length, 0);
+ok('вчерашнее блюдо ссылается на настоящую готовку', orphanLeftover === 0,
+  orphanLeftover + ' осиротевших продолжений');
+
+const emptyWide = wide.reduce((n, p) =>
+  n + p.days.reduce((m, day) => m + day.meals.filter(x => !x.recipe).length, 0), 0);
+ok('ни один приём пищи не остаётся пустым', emptyWide === 0, emptyWide + ' пустых');
 
 // ───────────────────────────────────────────────── подгонка под бюджет
 
