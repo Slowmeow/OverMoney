@@ -15,12 +15,16 @@ const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 
 const CORE = [
+  'js/core/config.js',
   'js/data/products.js',
   'js/data/diets.js',
   'js/data/recipes.js',
   'js/core/nutrition.js',
+  'js/core/cloud.js',
   'js/core/sync.js',
   'js/core/store.js',
+  'js/core/merge.js',
+  'js/core/account.js',
   'js/core/receipt.js',
   'js/core/shopping.js',
   'js/core/planner.js'

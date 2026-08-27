@@ -56,7 +56,7 @@ if (!App.store.plan()) {
   App.store.persist();
 }
 
-const SCREENS = ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings'];
+const SCREENS = ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings', 'account'];
 let broken = 0;
 
 console.log('  экран        узлов  текста  ');

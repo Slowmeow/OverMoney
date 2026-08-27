@@ -25,6 +25,12 @@
 
     frame-ancestors здесь не указан намеренно: в meta он не работает, только
     в заголовке ответа, а заголовками GitHub Pages управлять не даёт.
+
+    Единственный внешний адрес в connect-src — supabase.co, туда уходит
+    синхронизация аккаунтов. Разрешение стоит звёздочкой, потому что адрес
+    проекта у каждого свой и в общем коде его нет. Если вы разворачиваете
+    приложение только для себя, замените звёздочку на адрес своего проекта
+    из js/core/config.js — станет ещё строже.
   -->
   <!--
     blob: в default-src — ради выгрузки резервной копии. Файл отдаётся ссылкой
@@ -40,7 +46,7 @@
     script-src 'self' 'unsafe-inline';
     style-src 'self' 'unsafe-inline';
     img-src 'self' data:;
-    connect-src 'self';
+    connect-src 'self' https://*.supabase.co;
     manifest-src 'self' data:;
     worker-src 'self';
     object-src 'none';
@@ -48,7 +54,7 @@
     form-action 'none'">
   <title>Продукты по бюджету</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="css/app.css?v=1.7">
+  <link rel="stylesheet" href="css/app.css?v=1.8">
 </head>
 <body>
   <header class="topbar">
@@ -62,30 +68,35 @@
   <main id="view" class="main"></main>
 
   <footer class="footer">
-    Данные не покидают ваш компьютер. Резервная копия — «Настройки → Данные».
+    <span id="privacy">Данные хранятся в этом браузере. Резервная копия — «Настройки → Данные».</span>
     <span id="sync" class="version"></span>
     <span id="version" class="version"></span>
   </footer>
 
   <!-- Порядок важен: данные, потом расчёты, потом экраны, потом запуск. -->
-  <script src="js/data/products.js?v=1.7"></script>
-  <script src="js/data/diets.js?v=1.7"></script>
-  <script src="js/data/recipes.js?v=1.7"></script>
-  <script src="js/core/nutrition.js?v=1.7"></script>
-  <script src="js/core/sync.js?v=1.7"></script>
-  <script src="js/core/store.js?v=1.7"></script>
-  <script src="js/core/receipt.js?v=1.7"></script>
-  <script src="js/core/shopping.js?v=1.7"></script>
-  <script src="js/core/planner.js?v=1.7"></script>
-  <script src="js/ui/helpers.js?v=1.7"></script>
-  <script src="js/ui/charts.js?v=1.7"></script>
-  <script src="js/ui/view-dashboard.js?v=1.7"></script>
-  <script src="js/ui/view-week.js?v=1.7"></script>
-  <script src="js/ui/view-list.js?v=1.7"></script>
-  <script src="js/ui/view-pantry.js?v=1.7"></script>
-  <script src="js/ui/view-prices.js?v=1.7"></script>
-  <script src="js/ui/view-reports.js?v=1.7"></script>
-  <script src="js/ui/view-settings.js?v=1.7"></script>
-  <script src="js/app.js?v=1.7"></script>
+  <script src="js/core/config.js?v=1.8"></script>
+  <script src="js/data/products.js?v=1.8"></script>
+  <script src="js/data/diets.js?v=1.8"></script>
+  <script src="js/data/recipes.js?v=1.8"></script>
+  <script src="js/core/nutrition.js?v=1.8"></script>
+  <script src="js/core/cloud.js?v=1.8"></script>
+  <script src="js/core/sync.js?v=1.8"></script>
+  <script src="js/core/store.js?v=1.8"></script>
+  <script src="js/core/merge.js?v=1.8"></script>
+  <script src="js/core/account.js?v=1.8"></script>
+  <script src="js/core/receipt.js?v=1.8"></script>
+  <script src="js/core/shopping.js?v=1.8"></script>
+  <script src="js/core/planner.js?v=1.8"></script>
+  <script src="js/ui/helpers.js?v=1.8"></script>
+  <script src="js/ui/charts.js?v=1.8"></script>
+  <script src="js/ui/view-dashboard.js?v=1.8"></script>
+  <script src="js/ui/view-week.js?v=1.8"></script>
+  <script src="js/ui/view-list.js?v=1.8"></script>
+  <script src="js/ui/view-pantry.js?v=1.8"></script>
+  <script src="js/ui/view-prices.js?v=1.8"></script>
+  <script src="js/ui/view-reports.js?v=1.8"></script>
+  <script src="js/ui/view-settings.js?v=1.8"></script>
+  <script src="js/ui/view-account.js?v=1.8"></script>
+  <script src="js/app.js?v=1.8"></script>
 </body>
 </html>

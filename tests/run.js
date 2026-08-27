@@ -344,6 +344,93 @@ ok('компромисс обратим', !!hardPlan.beforeHardFit);
 planner.undoHardFit(hardPlan);
 ok('откат возвращает исходный план', hardPlan.cost === before, hardPlan.cost + ' ₽');
 
+// ───────────────────────────────────────────────── слияние хозяйств
+
+/* Самая необратимая операция в приложении: разделить обратно то, что слилось,
+   оно не умеет. Поэтому арифметика здесь проверяется отдельно и придирчиво. */
+section('Слияние хозяйств');
+
+const { mergeStates, describeMerge, sumPerPeriod } = App.merge;
+
+{
+  const host = { settings: { budget: 20000, period: 'month', weeksInMonth: 4.3, outsideFood: 0 },
+    people: [{ id: 'p1', name: 'Хозяин' }], pantry: { rice: 1000 }, priceLog: [], stores: ['Пятёрочка'] };
+  const guest = { settings: { budget: 10000, period: 'month', weeksInMonth: 4.3, outsideFood: 0 },
+    people: [{ id: 'p1', name: 'Гость' }], pantry: { rice: 500, oats: 800 }, priceLog: [], stores: ['Магнит'] };
+
+  const m = mergeStates(host, guest);
+  ok('бюджеты складываются', m.settings.budget === 30000, m.settings.budget + ' ₽ = 20000 + 10000');
+  ok('едоков стало двое', m.people.length === 2, m.people.map(p => p.name).join(' и '));
+  ok('совпавшие коды профилей разведены',
+    m.people[0].id !== m.people[1].id, m.people.map(p => p.id).join(', '));
+  ok('кладовая складывается по количествам', m.pantry.rice === 1500 && m.pantry.oats === 800,
+    'рис ' + m.pantry.rice + ' г, овсянка ' + m.pantry.oats + ' г');
+  ok('магазины объединились', m.stores.length === 2, m.stores.join(', '));
+  ok('план отброшен — он считался на другой состав', m.plan === null);
+}
+
+{
+  // Разные периоды — самая вероятная ошибка: 15000 в месяц и 4000 в неделю
+  // нельзя просто сложить.
+  const host = { settings: { budget: 15000, period: 'month', weeksInMonth: 4, outsideFood: 0 }, people: [] };
+  const guest = { settings: { budget: 4000, period: 'week', weeksInMonth: 4, outsideFood: 0 }, people: [] };
+  const m = mergeStates(host, guest);
+  // 15000/мес = 3750/нед; + 4000/нед = 7750/нед; обратно в месяц = 31000
+  ok('бюджеты за разные периоды приводятся к одному', m.settings.budget === 31000,
+    m.settings.budget + ' ₽/мес = (15000/4 + 4000) × 4');
+  ok('период остаётся хозяйским', m.settings.period === 'month');
+}
+
+{
+  const host = { settings: { budget: 1, period: 'week', weeksInMonth: 4.3 }, people: [],
+    priceLog: [{ d: '2026-08-01', p: 'rice', brand: 'Мистраль', store: 'Пятёрочка', pr: 99 }] };
+  const guest = { settings: { budget: 1, period: 'week', weeksInMonth: 4.3 }, people: [],
+    priceLog: [
+      { d: '2026-08-01', p: 'rice', brand: 'Мистраль', store: 'Пятёрочка', pr: 99 },   // тот же самый
+      { d: '2026-08-02', p: 'oats', brand: '', store: 'Магнит', pr: 79 }
+    ] };
+  const m = mergeStates(host, guest);
+  ok('журнал цен объединяется без повторов', m.priceLog.length === 2,
+    m.priceLog.length + ' записи из 1 + 2');
+}
+
+{
+  const host = { settings: { budget: 1, period: 'week' }, people: [],
+    regulars: [{ p: 'coffee', qty: 1, per: 'month' }] };
+  const guest = { settings: { budget: 1, period: 'week' }, people: [],
+    regulars: [{ p: 'coffee', qty: 1, per: 'week' }, { p: 'tea', qty: 1, per: 'month' }] };
+  const m = mergeStates(host, guest);
+  const coffee = m.regulars.find(r => r.p === 'coffee');
+  ok('у регулярных покупок берётся больший расход', coffee.per === 'week',
+    'кофе: ' + coffee.qty + ' ' + coffee.per + ' (было раз в месяц и раз в неделю)');
+  ok('чужие регулярные покупки переносятся', !!m.regulars.find(r => r.p === 'tea'));
+}
+
+{
+  // Слияние с пустым хозяйством — не особый случай, а перенос своего.
+  const guest = { settings: { budget: 9000, period: 'month', weeksInMonth: 4.3 },
+    people: [{ id: 'p1', name: 'Я' }], pantry: { rice: 500 } };
+  const m = mergeStates(null, guest);
+  ok('вступление в пустое хозяйство переносит своё', m === guest, 'бюджет ' + m.settings.budget + ' ₽');
+  ok('описание изменений не падает на пустом хозяйстве',
+    Array.isArray(describeMerge(null, guest)) && describeMerge(null, guest).length === 0);
+}
+
+{
+  const host = { settings: { budget: 20000, period: 'month', weeksInMonth: 4.3 },
+    people: [{ id: 'p1', name: 'А' }], pantry: {}, priceLog: [], plan: { days: [] } };
+  const guest = { settings: { budget: 10000, period: 'month', weeksInMonth: 4.3 },
+    people: [{ id: 'p2', name: 'Б' }], pantry: { rice: 1 }, priceLog: [{ d: '1', p: 'x', pr: 1 }],
+    customProducts: [{ id: 'my', n: 'Своё' }] };
+  const lines = describeMerge(host, guest);
+  ok('человеку заранее показывают, что изменится', lines.length >= 4, lines.length + ' пунктов');
+  ok('среди них назван новый бюджет', lines.some(l => /30000/.test(l)),
+    (lines.find(l => /бюджет/i.test(l)) || '').slice(0, 60));
+}
+
+ok('приведение периода не теряет копейки на неделе',
+  sumPerPeriod(700, { period: 'week' }, 300, { period: 'week' }) === 1000);
+
 // ───────────────────────────────────────────────── быстродействие
 
 section('Быстродействие (те же 8 посевов, поэтому цифры сравнимы между запусками)');

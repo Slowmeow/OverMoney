@@ -1112,6 +1112,43 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .busy, .busy .btn { cursor: progress; }
 .busy .btn { opacity: 0.6; pointer-events: none; }
 
+/* ================= аккаунт ================= */
+
+/* Код приглашения диктуют голосом и переписывают с чужого экрана,
+   поэтому он крупный, моноширинный и с разрядкой между знаками. */
+.invite-code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: clamp(1.4rem, 6vw, 2rem);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.18em;
+  text-align: center;
+  padding: var(--space-5) var(--space-4);
+  margin: var(--space-4) 0;
+  background: var(--surface-2);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  color: var(--accent);
+  user-select: all;                 /* одно нажатие выделяет код целиком */
+  word-break: break-all;
+}
+
+/* Сообщение под полями входа: ответ на действие, а не украшение,
+   поэтому стоит там, где взгляд уже находится. */
+.notice {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+}
+.notice.bad { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+
+.sep {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: var(--space-6) 0 var(--space-5);
+}
+
 /* ================= печать ================= */
 
 @media print {

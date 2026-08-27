@@ -25,6 +25,12 @@
 
     frame-ancestors здесь не указан намеренно: в meta он не работает, только
     в заголовке ответа, а заголовками GitHub Pages управлять не даёт.
+
+    Единственный внешний адрес в connect-src — supabase.co, туда уходит
+    синхронизация аккаунтов. Разрешение стоит звёздочкой, потому что адрес
+    проекта у каждого свой и в общем коде его нет. Если вы разворачиваете
+    приложение только для себя, замените звёздочку на адрес своего проекта
+    из js/core/config.js — станет ещё строже.
   -->
   <!--
     blob: в default-src — ради выгрузки резервной копии. Файл отдаётся ссылкой
@@ -40,7 +46,7 @@
     script-src 'self' 'unsafe-inline';
     style-src 'self' 'unsafe-inline';
     img-src 'self' data:;
-    connect-src 'self';
+    connect-src 'self' https://*.supabase.co;
     manifest-src 'self' data:;
     worker-src 'self';
     object-src 'none';
@@ -1163,6 +1169,43 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .busy, .busy .btn { cursor: progress; }
 .busy .btn { opacity: 0.6; pointer-events: none; }
 
+/* ================= аккаунт ================= */
+
+/* Код приглашения диктуют голосом и переписывают с чужого экрана,
+   поэтому он крупный, моноширинный и с разрядкой между знаками. */
+.invite-code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: clamp(1.4rem, 6vw, 2rem);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.18em;
+  text-align: center;
+  padding: var(--space-5) var(--space-4);
+  margin: var(--space-4) 0;
+  background: var(--surface-2);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  color: var(--accent);
+  user-select: all;                 /* одно нажатие выделяет код целиком */
+  word-break: break-all;
+}
+
+/* Сообщение под полями входа: ответ на действие, а не украшение,
+   поэтому стоит там, где взгляд уже находится. */
+.notice {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+}
+.notice.bad { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+
+.sep {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: var(--space-6) 0 var(--space-5);
+}
+
 /* ================= печать ================= */
 
 @media print {
@@ -1214,13 +1257,49 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   <main id="view" class="main"></main>
 
   <footer class="footer">
-    Данные не покидают ваш компьютер. Резервная копия — «Настройки → Данные».
+    <span id="privacy">Данные хранятся в этом браузере. Резервная копия — «Настройки → Данные».</span>
     <span id="sync" class="version"></span>
     <span id="version" class="version"></span>
   </footer>
 
   <!-- Порядок важен: данные, потом расчёты, потом экраны, потом запуск. -->
   <script>
+/* ===== js/core/config.js ===== */
+/* Подключение к облаку.
+ *
+ * Сюда вписываются два значения из вашего проекта Supabase:
+ * Project Settings → API → Project URL и anon public.
+ *
+ * Ключ anon публичный по замыслу — он и должен лежать в коде страницы,
+ * его видит любой, кто откроет приложение. Он не даёт доступа к данным
+ * сам по себе: кто чьи строки может прочитать, решают правила на стороне
+ * базы (schema.sql), и без входа в аккаунт этот ключ не открывает ничего.
+ * Прятать его негде и незачем — а вот service_role ключ в код класть
+ * нельзя никогда, он обходит все правила.
+ *
+ * Пока значения не заполнены, приложение работает ровно как раньше:
+ * всё локально, без аккаунтов. Ничего не ломается, просто нет входа.
+ */
+(function () {
+  'use strict';
+
+  const CONFIG = {
+    supabaseUrl: '',
+    supabaseAnonKey: ''
+  };
+
+  function configured() {
+    return !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
+  }
+
+  window.App = window.App || {};
+  window.App.config = {
+    get url() { return String(CONFIG.supabaseUrl || '').replace(/\/+$/, ''); },
+    get anonKey() { return CONFIG.supabaseAnonKey; },
+    configured: configured
+  };
+})();
+
 /* ===== js/data/products.js ===== */
 /* Каталог продуктов.
  *
@@ -2509,6 +2588,292 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   };
 })();
 
+/* ===== js/core/cloud.js ===== */
+/* Разговор с Supabase напрямую, запросами.
+ *
+ * Официальную библиотеку тянуть не стали, и это осознанно. Она грузится
+ * с чужого сервера — а у приложения ноль внешних адресов, на этом держатся
+ * и правила загрузки ресурсов, и сборка версии для телефона в один файл.
+ * Ради удобства пришлось бы разменять всё это. Нужного от Supabase здесь
+ * немного: вход, обновление ключа доступа и несколько запросов к данным.
+ *
+ * Всё общение проходит через request(), и там же живёт единственная хитрость,
+ * которая иначе расползлась бы по всему коду: ключ доступа живёт час,
+ * а приложение открыто дольше. Поэтому истёкший ключ обновляется на месте,
+ * и запрос повторяется — вызывающий об этом не знает и знать не должен.
+ */
+(function () {
+  'use strict';
+
+  const C = () => window.App.config;
+  const SESSION_KEY = 'spendings.session';
+
+  let session = null;          // { access_token, refresh_token, expires_at, user }
+  let refreshing = null;       // общий промис обновления: параллельные запросы ждут один
+
+  // ---------------------------------------------------------------- сессия
+
+  function loadSession() {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      session = raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      session = null;
+    }
+    return session;
+  }
+
+  function saveSession(next) {
+    session = next;
+    try {
+      if (next) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+      else localStorage.removeItem(SESSION_KEY);
+    } catch (e) { /* без хранилища вход проживёт до закрытия вкладки */ }
+  }
+
+  function current() {
+    if (session === null) loadSession();
+    return session;
+  }
+
+  function user() {
+    const s = current();
+    return s && s.user ? s.user : null;
+  }
+
+  function signedIn() {
+    return !!user();
+  }
+
+  /* Ключ считаем истёкшим за минуту до срока: запрос, отправленный
+     в последнюю секунду жизни ключа, доедет уже просроченным. */
+  function expired(s) {
+    return !s || !s.expires_at || (s.expires_at * 1000 - 60000) < Date.now();
+  }
+
+  function adopt(data) {
+    if (!data || !data.access_token) throw new Error('сервер не прислал ключ доступа');
+    saveSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: data.expires_at || Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
+      user: data.user || (session && session.user) || null
+    });
+    return session;
+  }
+
+  // ---------------------------------------------------------------- запросы
+
+  function headers(extra) {
+    const h = Object.assign({
+      'apikey': C().anonKey,
+      'Content-Type': 'application/json'
+    }, extra || {});
+    const s = current();
+    if (s && s.access_token) h['Authorization'] = 'Bearer ' + s.access_token;
+    return h;
+  }
+
+  /* Понятное сообщение вместо кода ошибки: человеку про 400 знать нечего. */
+  function describe(status, body) {
+    const msg = (body && (body.msg || body.message || body.error_description ||
+      body.error || body.hint)) || '';
+    const low = String(msg).toLowerCase();
+
+    if (low.indexOf('invalid login') !== -1) return 'Неверная почта или пароль';
+    if (low.indexOf('already registered') !== -1) return 'На эту почту уже есть аккаунт';
+    if (low.indexOf('email not confirmed') !== -1) return 'Почта не подтверждена — проверьте письмо';
+    if (low.indexOf('password should be') !== -1) return 'Пароль слишком короткий: нужно минимум 6 знаков';
+    if (low.indexOf('код не найден') !== -1) return 'Такого кода приглашения нет';
+    if (low.indexOf('не ваше хозяйство') !== -1) return 'Это хозяйство не ваше';
+    if (low.indexOf('rate limit') !== -1 || status === 429) return 'Слишком много попыток — подождите минуту';
+    if (status === 401 || status === 403) return 'Нужно войти заново';
+    if (status >= 500) return 'Сервер не отвечает — попробуйте позже';
+    return msg || ('Ошибка связи (' + status + ')');
+  }
+
+  function parse(res) {
+    return res.text().then(function (text) {
+      let body = null;
+      if (text) { try { body = JSON.parse(text); } catch (e) { body = { message: text }; } }
+      if (!res.ok) {
+        const err = new Error(describe(res.status, body));
+        err.status = res.status;
+        err.body = body;
+        throw err;
+      }
+      return body;
+    });
+  }
+
+  function raw(path, options) {
+    if (!C().configured()) return Promise.reject(new Error('Облако не настроено'));
+    return fetch(C().url + path, options).then(parse);
+  }
+
+  /* Обновление ключа доступа. Параллельные запросы, наткнувшиеся на истёкший
+     ключ, ждут одно обновление, а не устраивают наперегонки несколько —
+     сервер на это отвечает отзывом ключа обновления, и человека выкидывает. */
+  function refresh() {
+    const s = current();
+    if (!s || !s.refresh_token) return Promise.reject(new Error('Нужно войти заново'));
+    if (refreshing) return refreshing;
+
+    refreshing = raw('/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': C().anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: s.refresh_token })
+    }).then(function (data) {
+      refreshing = null;
+      return adopt(data);
+    }).catch(function (err) {
+      refreshing = null;
+      saveSession(null);            // ключ обновления мёртв — вход придётся повторить
+      throw err;
+    });
+
+    return refreshing;
+  }
+
+  /* Запрос от имени вошедшего. Истёкший ключ обновляется молча. */
+  function request(path, options) {
+    options = options || {};
+    const s = current();
+    const go = () => raw(path, Object.assign({}, options, { headers: headers(options.headers) }));
+
+    if (s && expired(s)) return refresh().then(go);
+    return go().catch(function (err) {
+      // Ключ мог протухнуть между проверкой и ответом сервера — тогда
+      // одна попытка обновиться и повторить, но ровно одна.
+      if (err.status === 401 && s && s.refresh_token) return refresh().then(go);
+      throw err;
+    });
+  }
+
+  // ---------------------------------------------------------------- вход
+
+  function signUp(email, password) {
+    return raw('/auth/v1/signup', {
+      method: 'POST',
+      headers: { 'apikey': C().anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: String(email).trim(), password: password })
+    }).then(function (data) {
+      // Если в проекте включено подтверждение почты, ключа здесь не будет:
+      // сначала письмо, вход потом. Это не ошибка, и говорить надо разное.
+      if (!data || !data.access_token) return { needsConfirmation: true, user: data && data.user };
+      adopt(data);
+      return { needsConfirmation: false, user: data.user };
+    });
+  }
+
+  function signIn(email, password) {
+    return raw('/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'apikey': C().anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: String(email).trim(), password: password })
+    }).then(function (data) {
+      adopt(data);
+      return data.user;
+    });
+  }
+
+  function signOut() {
+    const s = current();
+    saveSession(null);
+    if (!s || !s.access_token) return Promise.resolve();
+    // Отозвать ключ на сервере — вежливость, а не необходимость: локально
+    // мы его уже забыли, и неудача здесь ничего не меняет.
+    return raw('/auth/v1/logout', {
+      method: 'POST',
+      headers: { 'apikey': C().anonKey, 'Authorization': 'Bearer ' + s.access_token }
+    }).catch(() => {});
+  }
+
+  function resetPassword(email) {
+    return raw('/auth/v1/recover', {
+      method: 'POST',
+      headers: { 'apikey': C().anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: String(email).trim() })
+    });
+  }
+
+  function changePassword(password) {
+    return request('/auth/v1/user', {
+      method: 'PUT',
+      body: JSON.stringify({ password: password })
+    });
+  }
+
+  // ---------------------------------------------------------------- данные
+
+  function rpc(name, args) {
+    return request('/rest/v1/rpc/' + name, {
+      method: 'POST',
+      body: JSON.stringify(args || {})
+    });
+  }
+
+  function myHouseholds() {
+    return rpc('my_households').then(rows => rows || []);
+  }
+
+  function createHousehold(name, state) {
+    return rpc('create_household', { household_name: name || null, initial_state: state || null });
+  }
+
+  function joinHousehold(code) {
+    return rpc('join_household', { code: String(code || '').trim().toUpperCase() });
+  }
+
+  function rotateInvite(id) {
+    return rpc('rotate_invite_code', { hid: id });
+  }
+
+  function householdPeople(id) {
+    return rpc('household_people', { hid: id }).then(rows => rows || []);
+  }
+
+  function leaveHousehold(id) {
+    const u = user();
+    if (!u) return Promise.reject(new Error('Нужно войти'));
+    return request('/rest/v1/household_members?household_id=eq.' + encodeURIComponent(id) +
+      '&user_id=eq.' + encodeURIComponent(u.id), { method: 'DELETE' });
+  }
+
+  function fetchHousehold(id) {
+    return request('/rest/v1/households?id=eq.' + encodeURIComponent(id) + '&select=*', {
+      method: 'GET'
+    }).then(rows => (rows && rows[0]) || null);
+  }
+
+  /* Записать состояние, но только если с тех пор его никто не менял.
+   *
+   * Условие rev=eq.<ожидаемый> — это и есть защита от затирания чужой работы:
+   * если другое устройство успело записаться раньше, номер версии уже другой,
+   * под условие не попадает ни одна строка, и сервер возвращает пустой список.
+   * Тогда отдаём наверх признак расхождения, а решает человек. */
+  function saveState(id, state, baseRev) {
+    return request('/rest/v1/households?id=eq.' + encodeURIComponent(id) +
+      '&rev=eq.' + encodeURIComponent(baseRev) + '&select=*', {
+      method: 'PATCH',
+      headers: { 'Prefer': 'return=representation' },
+      body: JSON.stringify({ state: state })
+    }).then(function (rows) {
+      if (rows && rows.length) return { ok: true, row: rows[0] };
+      return fetchHousehold(id).then(row => ({ ok: false, conflict: true, row: row }));
+    });
+  }
+
+  window.App = window.App || {};
+  window.App.cloud = {
+    signUp, signIn, signOut, resetPassword, changePassword,
+    user, signedIn, current, refresh,
+    myHouseholds, createHousehold, joinHousehold, leaveHousehold,
+    rotateInvite, householdPeople, fetchHousehold, saveState,
+    available: () => C().configured()
+  };
+})();
+
 /* ===== js/core/sync.js ===== */
 /* Общая база между телефоном и компьютером.
  *
@@ -2993,16 +3358,22 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 
   function save() {
     persist();
-    // Локальная запись уже прошла, поэтому отправка на сервер ничего не задерживает
-    // и её неудача ничего не теряет.
+    // Локальная запись уже прошла, поэтому отправка наружу ничего не задерживает
+    // и её неудача ничего не теряет: данные остались в браузере и уедут
+    // при следующей попытке.
+    if (window.App.account) window.App.account.schedulePush();
     if (window.App.sync) window.App.sync.push(() => state);
   }
 
   /* Принять состояние, пришедшее с другого устройства. Обратно не отправляем —
      иначе два устройства будут бесконечно пересылать друг другу одно и то же. */
-  function adopt(remote) {
+  /* Принять состояние, пришедшее снаружи.
+     silent — «это уже и есть версия из облака, отправлять её обратно незачем»:
+     без него два устройства пересылали бы друг другу одно и то же по кругу. */
+  function adopt(remote, opts) {
     state = migrate(remote);
-    persist();
+    if (opts && opts.silent) persist();
+    else save();
     return state;
   }
 
@@ -3029,9 +3400,14 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     return p.days[dayIndex].meals.find(m => m.slot === slot) || null;
   }
 
-  function reset() {
+  /* local — стереть только из этого браузера, не трогая облако.
+     Так уходит выход из аккаунта: данные обязаны исчезнуть с устройства,
+     чтобы их не увидел следующий человек, но остаться в хозяйстве. */
+  function reset(opts) {
     state = defaultState();
-    save();
+    if (opts && opts.local) persist();
+    else save();
+    return state;
   }
 
   // ---------- ЖУРНАЛ ЦЕН И МАРКИ ----------
@@ -3350,6 +3726,559 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     dismissSwap, restoreSwaps,
     exportJson, importJson,
     defaultPerson
+  };
+})();
+
+/* ===== js/core/merge.js ===== */
+/* Слияние двух хозяйств в одно.
+ *
+ * Случается ровно в один момент: человек со своими данными присоединяется
+ * к чужому хозяйству. Выбросить одну из сторон нельзя — с обеих сторон
+ * это месяцы правок цен и заполненная кладовая.
+ *
+ * Правило, из которого выведено всё остальное: складывается то, что в жизни
+ * складывается, и объединяется то, что в жизни объединяется. Двое съехались —
+ * едоков стало двое, бюджеты сложились, крупа с двух полок оказалась на одной.
+ * А вот план на неделю не складывается никак: он был рассчитан на одного,
+ * и на двоих его не растянуть. Поэтому план отбрасывается и собирается заново.
+ */
+(function () {
+  'use strict';
+
+  /* Бюджеты заданы за разные периоды: у одного 15 000 в месяц, у другого
+     4 000 в неделю. Складывать их как числа — бессмыслица, поэтому обе
+     стороны приводятся к неделе, складываются и выражаются обратно
+     в периоде принимающей стороны. */
+  function weeksOf(settings) {
+    return settings.period === 'month' ? (settings.weeksInMonth || 4.3) : 1;
+  }
+
+  function sumPerPeriod(hostValue, hostSettings, guestValue, guestSettings) {
+    const perWeek = (hostValue || 0) / weeksOf(hostSettings) +
+                    (guestValue || 0) / weeksOf(guestSettings);
+    return Math.round(perWeek * weeksOf(hostSettings));
+  }
+
+  /* Профили обоих становятся едоками одного хозяйства.
+     Совпавшие коды переименовываются: код — это ключ, по которому за человеком
+     закреплены приёмы пищи и раскладка по тарелкам, и два разных человека
+     под одним кодом слились бы в одного. */
+  function mergePeople(host, guest) {
+    const used = {};
+    host.forEach(p => { used[p.id] = true; });
+    const added = guest.map(function (p) {
+      const copy = Object.assign({}, p);
+      if (used[copy.id]) {
+        let n = 2;
+        while (used[copy.id + '_' + n]) n++;
+        copy.id = copy.id + '_' + n;
+      }
+      used[copy.id] = true;
+      return copy;
+    });
+    return host.concat(added);
+  }
+
+  /* Кладовая складывается буквально: две пачки гречки на одной кухне —
+     это две пачки гречки. */
+  function mergePantry(host, guest) {
+    const out = Object.assign({}, host);
+    Object.keys(guest || {}).forEach(function (id) {
+      out[id] = (out[id] || 0) + guest[id];
+    });
+    return out;
+  }
+
+  /* Журнал цен — это накопленное знание о магазинах, и оно тем ценнее,
+     чем длиннее. Объединяем целиком, отбрасывая лишь буквальные повторы:
+     одна и та же марка в одном магазине в один день. */
+  function mergePriceLog(host, guest) {
+    const seen = {};
+    const out = [];
+    host.concat(guest || []).forEach(function (e) {
+      if (!e || !e.p) return;
+      const key = [e.p, e.brand || '', e.store || '', e.d || ''].join('|');
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push(e);
+    });
+    return out;
+  }
+
+  function mergeFlags(host, guest) {
+    return Object.assign({}, guest || {}, host || {});
+  }
+
+  function mergeById(host, guest, key) {
+    const seen = {};
+    const out = [];
+    (host || []).concat(guest || []).forEach(function (item) {
+      if (!item) return;
+      const id = item[key];
+      if (id !== undefined && seen[id]) return;
+      if (id !== undefined) seen[id] = true;
+      out.push(item);
+    });
+    return out;
+  }
+
+  function mergeStrings(host, guest) {
+    const out = (host || []).slice();
+    (guest || []).forEach(s => { if (out.indexOf(s) === -1) out.push(s); });
+    return out;
+  }
+
+  /* Регулярные покупки: шампунь у обоих, но кухня одна. Берём больший
+     расход — он ближе к правде для двоих, чем меньший. */
+  function mergeRegulars(host, guest) {
+    const byId = {};
+    (host || []).forEach(r => { if (r && r.p) byId[r.p] = Object.assign({}, r); });
+    (guest || []).forEach(function (r) {
+      if (!r || !r.p) return;
+      const have = byId[r.p];
+      if (!have) { byId[r.p] = Object.assign({}, r); return; }
+      const weeksHave = window.App.store.periodWeeks(have.per);
+      const weeksNew = window.App.store.periodWeeks(r.per);
+      if ((r.qty || 0) / weeksNew > (have.qty || 0) / weeksHave) byId[r.p] = Object.assign({}, r);
+    });
+    return Object.keys(byId).map(k => byId[k]);
+  }
+
+  /* host — хозяйство, к которому присоединяются; guest — тот, кто приходит
+     со своими данными. Настройки берутся у принимающей стороны: это её
+     сложившийся уклад, а гость к нему присоединяется. Складываются только
+     деньги — они и правда становятся общими. */
+  function mergeStates(host, guest) {
+    if (!guest) return host;
+    if (!host) return guest;
+
+    const out = JSON.parse(JSON.stringify(host));
+    const hs = out.settings, gs = guest.settings || {};
+
+    hs.budget = sumPerPeriod(hs.budget, hs, gs.budget, gs);
+    hs.outsideFood = sumPerPeriod(hs.outsideFood, hs, gs.outsideFood, gs);
+
+    out.people = mergePeople(out.people || [], guest.people || []);
+    out.pantry = mergePantry(out.pantry || {}, guest.pantry || {});
+    out.priceLog = mergePriceLog(out.priceLog || [], guest.priceLog || []);
+    out.excluded = mergeFlags(out.excluded, guest.excluded);
+    out.disabledRecipes = mergeFlags(out.disabledRecipes, guest.disabledRecipes);
+    out.dismissedSwaps = mergeFlags(out.dismissedSwaps, guest.dismissedSwaps);
+    out.brandChoice = mergeFlags(out.brandChoice, guest.brandChoice);
+    out.customProducts = mergeById(out.customProducts, guest.customProducts, 'id');
+    out.customRecipes = mergeById(out.customRecipes, guest.customRecipes, 'id');
+    out.stores = mergeStrings(out.stores, guest.stores);
+    out.regulars = mergeRegulars(out.regulars, guest.regulars);
+    out.history = (out.history || []).concat(guest.history || []);
+
+    // План считался на прежний состав едоков и прежние деньги. Оставить его —
+    // значит показывать меню, которое никого уже не кормит по норме.
+    out.plan = null;
+    out.listState = {};
+
+    return out;
+  }
+
+  /* Что именно изменится при слиянии — показывается человеку до того,
+     как он согласится. Слияние необратимо, и соглашаться вслепую он не должен. */
+  function describeMerge(host, guest) {
+    if (!host || !guest) return [];
+    const hs = host.settings || {}, gs = guest.settings || {};
+    const lines = [];
+
+    const budget = sumPerPeriod(hs.budget, hs, gs.budget, gs);
+    if (budget !== hs.budget) {
+      lines.push('Бюджет станет ' + budget + ' ₽ вместо ' + (hs.budget || 0) + ' ₽ — суммы сложатся');
+    }
+    const people = (guest.people || []).length;
+    if (people) lines.push('Едоков станет ' + ((host.people || []).length + people) +
+      ': ваши профили добавятся к тем, что уже есть');
+
+    const pantry = Object.keys(guest.pantry || {}).length;
+    if (pantry) lines.push('В кладовую добавится ' + pantry + ' поз. — количества сложатся');
+
+    const prices = (guest.priceLog || []).length;
+    if (prices) lines.push('В журнал цен добавится ваших записей: ' + prices);
+
+    const own = (guest.customProducts || []).length + (guest.customRecipes || []).length;
+    if (own) lines.push('Перенесутся ваши продукты и рецепты: ' + own);
+
+    if (host.plan || guest.plan) lines.push('План на неделю придётся собрать заново — он считался на другой состав едоков');
+
+    return lines;
+  }
+
+  window.App = window.App || {};
+  window.App.merge = { mergeStates, describeMerge, sumPerPeriod };
+})();
+
+/* ===== js/core/account.js ===== */
+/* Аккаунт, хозяйство и синхронизация состояния.
+ *
+ * Здесь сходятся три вещи, которые по отдельности просты, а вместе дают
+ * почти все ошибки такого рода приложений: кто вошёл, чьи данные показывать
+ * и что делать, когда два устройства правят их одновременно.
+ *
+ * Порядок намеренно «сначала локально». Приложение читает и пишет в браузер,
+ * поэтому открывается мгновенно и работает в магазине, где связи нет. Облако
+ * подтягивается следом и, если доступно, становится общей правдой.
+ *
+ * Три режима, и приложение обязано вести себя понятно в каждом:
+ *   нет настроек облака — всё локально, аккаунтов нет вовсе, как раньше;
+ *   облако есть, но не вошли — гостевой режим, данные только в этом браузере;
+ *   вошли — данные принадлежат хозяйству и живут в облаке.
+ */
+(function () {
+  'use strict';
+
+  const CLOUD = () => window.App.cloud;
+  const STORE = () => window.App.store;
+
+  const HOUSEHOLD_KEY = 'spendings.household';
+  const GUEST_KEY = 'spendings.guest';
+  const PUSH_DELAY = 900;        // мс тишины перед отправкой
+
+  let household = null;          // { id, name, invite_code, rev }
+  let pushTimer = null;
+  let pending = false;
+  let busy = false;
+  let conflict = false;
+  let lastError = '';
+  const listeners = [];
+
+  // ---------------------------------------------------------------- состояние слоя
+
+  function status() {
+    return {
+      configured: CLOUD().available(),
+      signedIn: CLOUD().signedIn(),
+      guest: isGuest(),
+      email: (CLOUD().user() || {}).email || '',
+      household: household,
+      pending: pending,
+      conflict: conflict,
+      error: lastError
+    };
+  }
+
+  function onChange(fn) { listeners.push(fn); }
+
+  function notify() {
+    const s = status();
+    listeners.forEach(fn => { try { fn(s); } catch (e) { console.warn(e); } });
+  }
+
+  /* Гостевой режим — сознательный выбор «посмотреть без аккаунта».
+     Он отличается от «ещё не вошёл» тем, что человек его выбрал, и приложение
+     не имеет права снова показывать ему экран входа при каждом запуске. */
+  function isGuest() {
+    try { return localStorage.getItem(GUEST_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  function setGuest(on) {
+    try {
+      if (on) localStorage.setItem(GUEST_KEY, '1');
+      else localStorage.removeItem(GUEST_KEY);
+    } catch (e) { /* без хранилища режим проживёт до перезагрузки */ }
+    notify();
+  }
+
+  function rememberHousehold(row) {
+    household = row ? {
+      id: row.id, name: row.name, invite_code: row.invite_code, rev: row.rev
+    } : null;
+    try {
+      if (household) localStorage.setItem(HOUSEHOLD_KEY, JSON.stringify(household));
+      else localStorage.removeItem(HOUSEHOLD_KEY);
+    } catch (e) { /* переживём */ }
+    notify();
+    return household;
+  }
+
+  function loadRememberedHousehold() {
+    try {
+      const raw = localStorage.getItem(HOUSEHOLD_KEY);
+      household = raw ? JSON.parse(raw) : null;
+    } catch (e) { household = null; }
+    return household;
+  }
+
+  // ---------------------------------------------------------------- вход
+
+  /* Нужно ли показать экран входа вместо приложения.
+     Показываем ровно тогда, когда облако настроено, человек не вошёл
+     и гостем быть не соглашался. */
+  function needsAuth() {
+    return CLOUD().available() && !CLOUD().signedIn() && !isGuest();
+  }
+
+  function signIn(email, password) {
+    return CLOUD().signIn(email, password).then(function (user) {
+      setGuest(false);
+      return afterSignIn().then(() => user);
+    });
+  }
+
+  function signUp(email, password) {
+    return CLOUD().signUp(email, password).then(function (result) {
+      if (result.needsConfirmation) return result;
+      setGuest(false);
+      return afterSignIn().then(() => result);
+    });
+  }
+
+  /* Выход обязан стереть данные из этого браузера.
+   *
+   * Иначе следующий человек, открывший приложение на том же устройстве,
+   * увидит чужие цены, кладовую и профили — ровно то, чего вход и должен
+   * не допускать. Данные при этом не теряются: они остались в облаке
+   * и вернутся при следующем входе. */
+  function signOut() {
+    return flushNow().catch(() => {}).then(function () {
+      return CLOUD().signOut();
+    }).then(function () {
+      rememberHousehold(null);
+      setGuest(false);
+      conflict = false;
+      STORE().reset({ local: true });
+      notify();
+    });
+  }
+
+  /* Что происходит сразу после успешного входа.
+   *
+   * Развилка здесь одна, и она важна: если человек до входа работал гостем
+   * и что-то успел завести, эти данные надо забрать с собой, а не потерять.
+   * Отличаем по признаку «в хозяйстве ещё нет состояния» — тогда местное
+   * и становится первым состоянием хозяйства. */
+  function afterSignIn() {
+    return CLOUD().myHouseholds().then(function (rows) {
+      if (rows.length) {
+        rememberHousehold(rows[0]);
+        return pull({ adoptRemote: true });
+      }
+      // Хозяйства нет — заводим, и семенем кладём то, что человек уже наработал.
+      const local = STORE().get();
+      return CLOUD().createHousehold(null, local).then(function (row) {
+        rememberHousehold(row);
+        setGuest(false);
+        return household;
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------- обмен
+
+  /* Забрать состояние хозяйства.
+   *
+   * adoptRemote означает «мы только что вошли, местное состояние не наше» —
+   * тогда облачное принимается без разговоров. В обычной же работе, когда
+   * человек уже что-то правил, молча затирать его правки нельзя. */
+  function pull(opts) {
+    opts = opts || {};
+    if (!household) return Promise.resolve(null);
+
+    return CLOUD().fetchHousehold(household.id).then(function (row) {
+      if (!row) return null;
+      const known = household.rev;
+      rememberHousehold(row);
+      lastError = '';
+
+      if (!row.state) {
+        // Хозяйство пустое — наполняем его тем, что есть здесь.
+        return push(true).then(() => null);
+      }
+      if (!opts.adoptRemote && row.rev === known) return null;   // ничего не менялось
+
+      STORE().adopt(row.state, { silent: true });
+      return row.state;
+    }).catch(function (err) {
+      lastError = err.message;
+      notify();
+      return null;
+    });
+  }
+
+  /* Отправить состояние пачкой, после паузы. Пауза нужна, чтобы правка цены
+     не превращалась в запрос на каждое нажатие клавиши. */
+  function schedulePush() {
+    if (!household || !CLOUD().signedIn()) return;
+    pending = true;
+    notify();
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => { push(false); }, PUSH_DELAY);
+  }
+
+  function push(force) {
+    if (!household || !CLOUD().signedIn()) return Promise.resolve();
+    if (busy) { schedulePush(); return Promise.resolve(); }
+
+    busy = true;
+    const state = STORE().get();
+    return CLOUD().saveState(household.id, state, household.rev).then(function (res) {
+      busy = false;
+      if (res.ok) {
+        rememberHousehold(res.row);
+        pending = false;
+        conflict = false;
+        lastError = '';
+        notify();
+        return { ok: true };
+      }
+      // Кто-то записался раньше. Молча затирать чужую работу нельзя.
+      if (force && res.row) {
+        return forceOverwrite(res.row.rev);
+      }
+      conflict = true;
+      pending = true;
+      notify();
+      return { conflict: true, remote: res.row };
+    }).catch(function (err) {
+      busy = false;
+      pending = true;
+      lastError = err.message;
+      notify();
+      return { offline: true };
+    });
+  }
+
+  function forceOverwrite(rev) {
+    if (!household) return Promise.resolve({ ok: false });
+    return CLOUD().saveState(household.id, STORE().get(), rev).then(function (res) {
+      if (res.ok) {
+        rememberHousehold(res.row);
+        pending = false; conflict = false;
+        notify();
+        return { ok: true };
+      }
+      return { conflict: true, remote: res.row };
+    });
+  }
+
+  function flushNow() {
+    clearTimeout(pushTimer);
+    if (!pending || !household || !CLOUD().signedIn()) return Promise.resolve();
+    return push(false);
+  }
+
+  /* Принять облачную версию, отказавшись от своей. */
+  function acceptRemote(row) {
+    if (!row) return Promise.resolve();
+    rememberHousehold(row);
+    if (row.state) STORE().adopt(row.state, { silent: true });
+    conflict = false;
+    pending = false;
+    notify();
+    return Promise.resolve();
+  }
+
+  // ---------------------------------------------------------------- хозяйство
+
+  function people() {
+    if (!household) return Promise.resolve([]);
+    return CLOUD().householdPeople(household.id);
+  }
+
+  /* Присоединиться к чужому хозяйству, забрав свои данные с собой.
+   *
+   * Порядок здесь единственно верный и стоил бы дорого, ошибись мы в нём:
+   * сначала вступаем, потом читаем чужое состояние, сливаем со своим
+   * и записываем результат. Записать до вступления нельзя — правила доступа
+   * не пустят; слить до чтения нечего.
+   *
+   * Если в чужом хозяйстве состояния ещё нет, слияние вырождается в перенос
+   * своего — и это правильно, а не особый случай. */
+  function joinByCode(code) {
+    const mine = JSON.parse(JSON.stringify(STORE().get()));
+    return CLOUD().joinHousehold(code).then(function (row) {
+      rememberHousehold(row);
+      const merged = window.App.merge.mergeStates(row.state, mine);
+      return CLOUD().saveState(row.id, merged, row.rev).then(function (res) {
+        const saved = res.row || row;
+        rememberHousehold(saved);
+        STORE().adopt(merged, { silent: true });
+        return { household: saved, merged: merged };
+      });
+    });
+  }
+
+  /* Что изменится при вступлении — до того, как человек согласится. */
+  function previewJoin(code) {
+    const mine = STORE().get();
+    return CLOUD().joinHousehold(code).then(function (row) {
+      // Вступление уже произошло: узнать состав чужого хозяйства иначе нельзя,
+      // правила доступа не дают читать то, где ты не состоишь. Выйти обратно
+      // можно одной кнопкой, поэтому цена ошибки здесь невелика.
+      rememberHousehold(row);
+      return {
+        household: row,
+        changes: window.App.merge.describeMerge(row.state, mine),
+        hasState: !!row.state
+      };
+    });
+  }
+
+  function leave() {
+    if (!household) return Promise.resolve();
+    const id = household.id;
+    return CLOUD().leaveHousehold(id).then(function () {
+      rememberHousehold(null);
+      // Своё хозяйство заводится заново, с текущими данными: человек уходит
+      // не в пустоту, а к тому, чем пользовался.
+      return CLOUD().createHousehold(null, STORE().get()).then(rememberHousehold);
+    });
+  }
+
+  function rotateInvite() {
+    if (!household) return Promise.resolve('');
+    return CLOUD().rotateInvite(household.id).then(function (code) {
+      household.invite_code = code;
+      rememberHousehold(household);
+      return code;
+    });
+  }
+
+  function rename(name) {
+    if (!household) return Promise.resolve();
+    return window.App.cloud.fetchHousehold(household.id).then(function () {
+      return fetch(window.App.config.url + '/rest/v1/households?id=eq.' + household.id, {
+        method: 'PATCH',
+        headers: {
+          'apikey': window.App.config.anonKey,
+          'Authorization': 'Bearer ' + CLOUD().current().access_token,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify({ name: name })
+      }).then(r => r.json()).then(rows => rememberHousehold((rows && rows[0]) || household));
+    });
+  }
+
+  // ---------------------------------------------------------------- запуск
+
+  function init() {
+    loadRememberedHousehold();
+    if (!CLOUD().available() || !CLOUD().signedIn()) { notify(); return Promise.resolve(); }
+
+    return CLOUD().myHouseholds().then(function (rows) {
+      if (!rows.length) return afterSignIn();
+      // Держимся того хозяйства, в котором работали, если человек всё ещё в нём.
+      const keep = household && rows.find(r => r.id === household.id);
+      rememberHousehold(keep || rows[0]);
+      return pull({ adoptRemote: true });
+    }).catch(function (err) {
+      lastError = err.message;
+      notify();
+    });
+  }
+
+  window.App = window.App || {};
+  window.App.account = {
+    init, status, onChange, needsAuth,
+    signIn, signUp, signOut, setGuest, isGuest,
+    pull, push, schedulePush, flushNow, acceptRemote, forceOverwrite,
+    joinByCode, previewJoin, leave, rotateInvite, rename, people,
+    get household() { return household; }
   };
 })();
 
@@ -8100,6 +9029,341 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   window.App.views.settings = { title: 'Настройки', render: render };
 })();
 
+/* ===== js/ui/view-account.js ===== */
+/* Экран аккаунта: вход, регистрация и общее хозяйство. */
+(function () {
+  'use strict';
+
+  const U = () => window.App.ui;
+  const A = () => window.App.account;
+  const C = () => window.App.cloud;
+
+  // Что показывать на экране входа: вход, регистрацию или восстановление.
+  let mode = 'signin';
+  let notice = '';
+  let noticeTone = '';
+
+  function say(text, tone) {
+    notice = text;
+    noticeTone = tone || '';
+    U().refresh();
+  }
+
+  function render() {
+    const u = U(), h = u.h;
+
+    if (!C().available()) return offlineOnlyCard();
+    if (!C().signedIn()) return h('div.view', {}, authCard());
+
+    return h('div.view', {}, [
+      accountCard(),
+      householdCard(),
+      inviteCard(),
+      joinCard()
+    ]);
+  }
+
+  /* Облако не настроено — рассказываем, что это значит, без упрёка. */
+  function offlineOnlyCard() {
+    const u = U(), h = u.h;
+    return h('div.view', {}, u.card('Аккаунты не подключены', [
+      h('p', { text: 'Приложение работает целиком в этом браузере: данные никуда не уходят, ' +
+        'но и не появляются на других устройствах сами.' }),
+      h('p.hint', { text: 'Чтобы включить аккаунты и синхронизацию, нужно один раз завести ' +
+        'бесплатный проект Supabase и вписать два значения в js/core/config.js. ' +
+        'Как — расписано в README, раздел «Аккаунты и синхронизация».' }),
+      h('p.hint', { text: 'Пока этого нет, переносите данные файлом: «Настройки → Данные».' })
+    ]));
+  }
+
+  // ---------------------------------------------------------------- вход
+
+  function authCard() {
+    const u = U(), h = u.h;
+
+    const email = u.input({ type: 'email', placeholder: 'почта', autocomplete: 'email' });
+    const pass = u.input({
+      type: 'password', placeholder: 'пароль',
+      autocomplete: mode === 'signup' ? 'new-password' : 'current-password'
+    });
+
+    function run(action) {
+      const e = email.value.trim(), p = pass.value;
+      if (!e) return say('Впишите почту', 'bad');
+      if (mode !== 'reset' && p.length < 6) return say('Пароль — минимум 6 знаков', 'bad');
+      say('Секунду…');
+      action(e, p).then(function (res) {
+        if (res && res.needsConfirmation) {
+          say('Проверьте почту: там письмо со ссылкой для подтверждения. ' +
+            'После неё возвращайтесь и входите.', '');
+          mode = 'signin';
+          U().refresh();
+          return;
+        }
+        notice = '';
+        u.toast(mode === 'signup' ? 'Аккаунт создан' : 'С возвращением');
+        u.go('dashboard');
+      }).catch(err => say(err.message, 'bad'));
+    }
+
+    const actions = {
+      signin: {
+        title: 'Вход',
+        button: 'Войти',
+        go: () => run(A().signIn),
+        links: [
+          ['Ещё нет аккаунта — зарегистрироваться', () => { mode = 'signup'; notice = ''; U().refresh(); }],
+          ['Забыл пароль', () => { mode = 'reset'; notice = ''; U().refresh(); }]
+        ]
+      },
+      signup: {
+        title: 'Регистрация',
+        button: 'Создать аккаунт',
+        go: () => run(A().signUp),
+        links: [['Уже есть аккаунт — войти', () => { mode = 'signin'; notice = ''; U().refresh(); }]]
+      },
+      reset: {
+        title: 'Восстановление пароля',
+        button: 'Прислать письмо',
+        go: function () {
+          const e = email.value.trim();
+          if (!e) return say('Впишите почту', 'bad');
+          say('Отправляю…');
+          C().resetPassword(e)
+            .then(() => say('Письмо отправлено, если такой аккаунт есть. Проверьте почту.', ''))
+            .catch(err => say(err.message, 'bad'));
+        },
+        links: [['Вспомнил — войти', () => { mode = 'signin'; notice = ''; U().refresh(); }]]
+      }
+    }[mode];
+
+    // Enter в любом поле делает то же, что кнопка: иначе на телефоне
+    // приходится закрывать клавиатуру, чтобы дотянуться до кнопки.
+    [email, pass].forEach(function (el) {
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter') actions.go(); });
+    });
+
+    return u.card(actions.title, [
+      h('p.hint', { text: 'Аккаунт нужен, чтобы данные жили не в одном браузере, ' +
+        'а переходили между телефоном и компьютером — и не пропали, если браузер почистится.' }),
+      u.field('Почта', email),
+      mode !== 'reset' ? u.field('Пароль', pass, mode === 'signup' ? 'Минимум 6 знаков' : null) : null,
+      notice ? h('p.notice' + (noticeTone === 'bad' ? '.bad' : ''), { text: notice }) : null,
+      h('div.row-actions', {}, [
+        u.button(actions.button, actions.go, 'primary'),
+        ...actions.links.map(([label, fn]) => u.button(label, fn, 'ghost small'))
+      ]),
+      h('hr.sep'),
+      h('p.hint', { text: 'Можно и без аккаунта — тогда данные останутся только в этом браузере, ' +
+        'а при чистке истории пропадут. Завести аккаунт можно позже: всё, что успеете ' +
+        'наработать, перенесётся.' }),
+      u.button('Посмотреть без аккаунта', function () {
+        A().setGuest(true);
+        u.go('dashboard');
+        u.toast('Работаем без аккаунта — данные только в этом браузере');
+      }, 'ghost')
+    ]);
+  }
+
+  // ---------------------------------------------------------------- вошли
+
+  function accountCard() {
+    const u = U(), h = u.h;
+    const st = A().status();
+
+    const line = st.conflict ? 'данные разошлись с облаком'
+      : st.error ? st.error
+      : st.pending ? 'сохраняю…'
+      : 'всё сохранено';
+
+    return u.card('Аккаунт', [
+      h('table.kv', {}, h('tbody', {}, [
+        h('tr', {}, [h('td', { text: 'Почта' }), h('td.num', { text: st.email })]),
+        h('tr', {}, [h('td', { text: 'Состояние' }), h('td.num', { text: line })])
+      ])),
+      h('div.row-actions', {}, [
+        u.button('Сохранить сейчас', function () {
+          A().flushNow().then(() => u.toast('Отправлено')).then(() => u.refresh());
+        }),
+        u.button('Обновить с сервера', function () {
+          A().pull({ adoptRemote: true }).then(function () {
+            u.refresh();
+            u.toast('Данные получены');
+          });
+        }),
+        u.button('Сменить пароль', changePassword, 'ghost'),
+        u.button('Выйти', function () {
+          u.modal('Выйти из аккаунта?', [
+            h('p', { text: 'Данные этого хозяйства сотрутся с этого устройства — чтобы их ' +
+              'не увидел следующий, кто откроет приложение здесь.' }),
+            h('p.hint', { text: 'В облаке они останутся и вернутся при следующем входе.' })
+          ], [
+            { label: 'Отмена' },
+            { label: 'Выйти', cls: 'primary', onClick: function () {
+              A().signOut().then(function () {
+                u.refresh();
+                u.toast('Вы вышли');
+              });
+            } }
+          ]);
+        }, 'ghost')
+      ])
+    ]);
+  }
+
+  function changePassword() {
+    const u = U(), h = u.h;
+    const pass = u.input({ type: 'password', placeholder: 'новый пароль', autocomplete: 'new-password' });
+    u.modal('Смена пароля', [
+      u.field('Новый пароль', pass, 'Минимум 6 знаков')
+    ], [
+      { label: 'Отмена' },
+      { label: 'Сменить', cls: 'primary', onClick: function () {
+        if (pass.value.length < 6) { u.toast('Пароль — минимум 6 знаков', 'bad'); return true; }
+        C().changePassword(pass.value)
+          .then(() => u.toast('Пароль изменён'))
+          .catch(err => u.toast(err.message, 'bad'));
+      } }
+    ]);
+  }
+
+  // ---------------------------------------------------------------- хозяйство
+
+  function householdCard() {
+    const u = U(), h = u.h;
+    const hh = A().household;
+    if (!hh) return u.card('Хозяйство', [h('p.hint', { text: 'Загружаю…' })]);
+
+    const list = h('ul.plain', {}, h('li', { text: 'Загружаю участников…' }));
+    A().people().then(function (rows) {
+      list.innerHTML = '';
+      rows.forEach(function (p) {
+        list.appendChild(h('li', { text: p.email + (p.user_id === (C().user() || {}).id ? '  — это вы' : '') }));
+      });
+      if (!rows.length) list.appendChild(h('li', { text: 'Пока только вы' }));
+    }).catch(function () {
+      list.innerHTML = '';
+      list.appendChild(h('li', { text: 'Не удалось получить список' }));
+    });
+
+    return u.card('Общее хозяйство', [
+      h('p.hint', { text: 'Бюджет, кладовая, цены и меню принадлежат хозяйству, а не человеку. ' +
+        'Пока вы в нём один — это просто ваши данные. Появится второй — станут общими, ' +
+        'потому что кастрюля на кухне тоже одна.' }),
+      u.field('Название', u.input({
+        value: hh.name,
+        onchange: function (e) {
+          A().rename(e.target.value.trim() || 'Моё хозяйство')
+            .then(() => u.toast('Переименовано'))
+            .catch(err => u.toast(err.message, 'bad'));
+        }
+      })),
+      h('h3', { text: 'Кто в хозяйстве' }),
+      list,
+      A().household ? h('div.row-actions', {}, u.button('Выйти из хозяйства', function () {
+        u.modal('Выйти из общего хозяйства?', [
+          h('p', { text: 'Вы перестанете видеть общие данные. Вам заведётся своё хозяйство, ' +
+            'и в нём останется копия того, что сейчас на экране.' }),
+          h('p.hint', { text: 'Остальные участники ничего не потеряют.' })
+        ], [
+          { label: 'Отмена' },
+          { label: 'Выйти', cls: 'primary', onClick: function () {
+            A().leave().then(function () {
+              u.refresh();
+              u.toast('Вы вышли из общего хозяйства');
+            }).catch(err => u.toast(err.message, 'bad'));
+          } }
+        ]);
+      }, 'ghost small')) : null
+    ]);
+  }
+
+  function inviteCard() {
+    const u = U(), h = u.h;
+    const hh = A().household;
+    if (!hh) return null;
+
+    return u.card('Позвать в хозяйство', [
+      h('p', { text: 'Продиктуйте этот код тому, кого зовёте. Он вводит его у себя ' +
+        'в «Аккаунте», и с этого момента бюджет, кладовая и цены у вас общие.' }),
+      h('div.invite-code', { text: hh.invite_code }),
+      h('p.hint', { text: 'В коде нет похожих друг на друга знаков — ноля и буквы «O», ' +
+        'единицы и «I»: его диктуют голосом, и путать их не придётся.' }),
+      h('div.row-actions', {}, [
+        u.button('Скопировать', function () {
+          const ok = () => u.toast('Код скопирован');
+          if (navigator.clipboard) navigator.clipboard.writeText(hh.invite_code).then(ok).catch(() => {});
+          else ok();
+        }),
+        u.button('Сменить код', function () {
+          A().rotateInvite().then(function () {
+            u.refresh();
+            u.toast('Код сменён — старый больше не работает');
+          }).catch(err => u.toast(err.message, 'bad'));
+        }, 'ghost small')
+      ])
+    ]);
+  }
+
+  function joinCard() {
+    const u = U(), h = u.h;
+    const code = u.input({ placeholder: 'например, K7M4XPQR', maxlength: 12 });
+
+    return u.card('Присоединиться к чужому хозяйству', [
+      h('p', { text: 'Если вас позвали — введите код. Ваши данные не пропадут: ' +
+        'бюджеты сложатся, кладовая и журнал цен объединятся, ваши профили ' +
+        'добавятся к тем, что уже есть.' }),
+      u.field('Код приглашения', code),
+      h('div.row-actions', {}, u.button('Присоединиться', function () {
+        const value = code.value.trim();
+        if (!value) return u.toast('Введите код', 'bad');
+
+        u.busy('Проверяю код…', function () {
+          A().previewJoin(value).then(function (preview) {
+            confirmJoin(value, preview);
+          }).catch(err => u.toast(err.message, 'bad'));
+        });
+      }, 'primary'))
+    ]);
+  }
+
+  /* Слияние необратимо, поэтому человек видит заранее, что именно изменится. */
+  function confirmJoin(code, preview) {
+    const u = U(), h = u.h;
+    const changes = preview.changes || [];
+
+    u.modal('Объединить хозяйства?', [
+      h('p', { text: 'Вы присоединяетесь к хозяйству «' + (preview.household.name || 'без названия') + '».' }),
+      changes.length
+        ? h('div', {}, [
+            h('p.hint', { text: 'Что изменится:' }),
+            h('ul.plain', {}, changes.map(c => h('li', { text: c })))
+          ])
+        : h('p.hint', { text: 'В том хозяйстве пока нет данных — туда перенесётся всё ваше.' }),
+      h('p.hint', { text: 'Разъединиться можно в любой момент, но разделить обратно то, ' +
+        'что слилось, приложение не умеет: цены и кладовая останутся общими у обоих.' })
+    ], [
+      { label: 'Отмена', onClick: function () {
+        // Вступление уже произошло — иначе состав чужого хозяйства не узнать.
+        // Передумал, значит выходим обратно.
+        A().leave().then(() => u.refresh());
+      } },
+      { label: 'Объединить', cls: 'primary', onClick: function () {
+        u.busy('Объединяю…', function () {
+          A().joinByCode(code).then(function () {
+            u.refresh();
+            u.toast('Хозяйства объединены — соберите неделю заново');
+          }).catch(err => u.toast(err.message, 'bad'));
+        });
+      } }
+    ]);
+  }
+
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+  window.App.views.account = { title: 'Аккаунт', render: render };
+})();
+
 /* ===== js/app.js ===== */
 /* Точка входа: навигация между экранами и общие действия. */
 (function () {
@@ -8107,12 +9371,21 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 
   /* Показывается в подвале. Если после обновления цифра не изменилась —
      браузер отдал страницу из кеша, и правок вы не увидите. */
-  const APP_VERSION = '1.7';
+  const APP_VERSION = '1.8';
 
-  const ORDER = ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings'];
+  const ORDER = ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings', 'account'];
   let current = 'dashboard';
 
+  /* Пока человек не вошёл и не согласился смотреть гостем, всё приложение —
+     это один экран входа. Иначе первое, что видит открывший адрес, — чужой
+     бюджет и чужая кладовая: данные-то лежат в браузере от прошлого хозяина
+     устройства. Вход существует ровно чтобы такого не было. */
+  function locked() {
+    return !!(window.App.account && window.App.account.needsAuth());
+  }
+
   function go(name) {
+    if (locked()) name = 'account';
     current = window.App.views[name] ? name : 'dashboard';
     location.hash = current;
     refresh();
@@ -8120,6 +9393,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   }
 
   function refresh() {
+    if (locked()) current = 'account';
     const view = window.App.views[current];
     const root = document.getElementById('view');
     root.innerHTML = '';
@@ -8140,9 +9414,14 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   function renderNav() {
     const nav = document.getElementById('nav');
     nav.innerHTML = '';
+    // На экране входа вкладок нет: показывать их значило бы предлагать
+    // заглянуть в данные, которых человеку ещё не полагается видеть.
+    if (locked()) return;
     ORDER.forEach(function (name) {
       const view = window.App.views[name];
       if (!view) return;
+      // Вкладка аккаунта появляется, только если облако вообще настроено.
+      if (name === 'account' && !(window.App.cloud && window.App.cloud.available())) return;
       nav.appendChild(window.App.ui.h('button.tab' + (name === current ? '.active' : ''), {
         type: 'button',
         onclick: () => go(name),
@@ -8183,12 +9462,59 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     });
   }
 
-  /* Общая база: подтягиваем при старте и при каждом возвращении к вкладке.
+  /* Облачный аккаунт: забираем данные при старте и при возвращении к вкладке.
      Опрашивать чаще незачем — правки делает человек, а не поток событий. */
+  function setupAccount() {
+    const account = window.App.account;
+    if (!account || !window.App.cloud.available()) return;
+
+    account.onChange(function (st) {
+      // Подвал обещает то, что происходит на самом деле. Пока человек
+      // не вошёл, данные и правда никуда не уходят; после входа — уходят,
+      // и делать вид, что нет, нельзя.
+      const privacy = document.getElementById('privacy');
+      if (privacy) {
+        privacy.textContent = st.signedIn
+          ? 'Данные хранятся в вашем аккаунте и в этом браузере.'
+          : 'Данные хранятся только в этом браузере. Резервная копия — «Настройки → Данные».';
+      }
+
+      const el = document.getElementById('sync');
+      if (!el) return;
+      if (!st.signedIn) el.textContent = st.guest ? '· без аккаунта' : '';
+      else if (st.conflict) el.textContent = '· данные разошлись';
+      else if (st.error) el.textContent = '· нет связи, сохраню позже';
+      else if (st.pending) el.textContent = '· сохраняю…';
+      else el.textContent = '· ' + ((st.household && st.household.name) || 'синхронизировано');
+    });
+
+    account.init().then(refresh);
+
+    function catchUp() {
+      if (!window.App.cloud.signedIn()) return;
+      account.pull().then(function (state) { if (state) refresh(); });
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) account.flushNow();
+      else catchUp();
+    });
+    window.addEventListener('focus', catchUp);
+    window.addEventListener('online', catchUp);
+    // Закрывают вкладку — отправляем не дожидаясь паузы, иначе последняя
+    // правка цены в магазине останется только в этом телефоне.
+    window.addEventListener('pagehide', () => account.flushNow());
+  }
+
+  /* Общая база через домашний компьютер: работает, только когда запущен
+     start.bat. С облаком не конфликтует — там, где есть аккаунт, api/state
+     просто не отвечает, и этот слой сам отключается. */
   function setupSync() {
     const sync = window.App.sync;
     const store = window.App.store;
     if (!sync) return;
+    // Когда данными заведует облако, второй хозяин им не нужен.
+    if (window.App.cloud && window.App.cloud.available()) return;
 
     let busy = false;
 
@@ -8265,6 +9591,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 
     const fromHash = location.hash.replace('#', '');
     current = window.App.views[fromHash] ? fromHash : 'dashboard';
+    if (locked()) current = 'account';
 
     refresh();
 
@@ -8273,6 +9600,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       if (name && name !== current && window.App.views[name]) go(name);
     });
 
+    setupAccount();
     setupSync();
 
     if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
