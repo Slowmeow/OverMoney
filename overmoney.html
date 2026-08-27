@@ -4,6 +4,48 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1f6f4a">
+
+  <!--
+    Правила, по которым странице разрешено что-либо загружать и куда-либо ходить.
+
+    Проверено, что приложение не делает ничего из запрещённого: внешних адресов
+    в нём нет ни одного, форм нет, object, embed, base и iframe нет, url() в
+    стилях нет, а по сети оно ходит только к себе — за общей базой.
+
+    Смысл не в том, чтобы починить существующую дыру: настоящих здесь не нашлось.
+    Смысл в том, чем закончится будущая ошибка. Без этих правил внедрённый код
+    может отправить всю кладовую, цены и профили на чужой сервер одной строкой.
+    С ними — не может: connect-src, img-src и script-src не выпускают запросы
+    за пределы своего адреса, а отсутствие unsafe-eval закрывает eval.
+
+    'unsafe-inline' оставлен сознательно. Код и стили вклеены внутрь страницы —
+    иначе версия для телефона не собралась бы в один файл. Само по себе это
+    ничего не открывает: приложение нигде не пишет разметку, всё выводится
+    через textContent, и внедрить туда inline-скрипт неоткуда.
+
+    frame-ancestors здесь не указан намеренно: в meta он не работает, только
+    в заголовке ответа, а заголовками GitHub Pages управлять не даёт.
+  -->
+  <!--
+    blob: в default-src — ради выгрузки резервной копии. Файл отдаётся ссылкой
+    на blob:, который страница создаёт сама, и браузеры расходятся в том,
+    подпадает ли такая ссылка под эти правила. Проверить наверняка нечем,
+    а цена ошибки высокая: выгрузка копии — единственный способ не потерять
+    данные, и запрещать её вслепую нельзя. Защиты это не ослабляет: blob:
+    живёт внутри страницы и никуда не ведёт, отправить на нём данные наружу
+    невозможно. Для кода и стилей разрешение не действует — у них свои строки.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self' blob:;
+    script-src 'self' 'unsafe-inline';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data:;
+    connect-src 'self';
+    manifest-src 'self' data:;
+    worker-src 'self';
+    object-src 'none';
+    base-uri 'none';
+    form-action 'none'">
   <title>Продукты по бюджету</title>
   <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjogItCf0YDQvtC00YPQutGC0Ysg0L/QviDQsdGO0LTQttC10YLRgyIsICJzaG9ydF9uYW1lIjogItCf0YDQvtC00YPQutGC0YsiLCAiZGVzY3JpcHRpb24iOiAi0J3QtdC00LXQu9GM0L3QvtC1INC80LXQvdGOINC/0L7QtCDQutCw0LvQvtGA0LjQuCwg0JHQltCjINC4INCx0Y7QtNC20LXRgiwg0YEg0YPRh9GR0YLQvtC8INGC0L7Qs9C+LCDRh9GC0L4g0YPQttC1INC10YHRgtGMINC00L7QvNCwIiwgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsICJvcmllbnRhdGlvbiI6ICJwb3J0cmFpdCIsICJiYWNrZ3JvdW5kX2NvbG9yIjogIiNmNGY1ZjMiLCAidGhlbWVfY29sb3IiOiAiIzFmNmY0YSIsICJsYW5nIjogInJ1IiwgImljb25zIjogW3sic3JjIjogImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjRiV3h1Y3owaWFIUjBjRG92TDNkM2R5NTNNeTV2Y21jdk1qQXdNQzl6ZG1jaUlIWnBaWGRDYjNnOUlqQWdNQ0F4T1RJZ01Ua3lJaUIzYVdSMGFEMGlNVGt5SWlCb1pXbG5hSFE5SWpFNU1pSStDaUFnUEhKbFkzUWdkMmxrZEdnOUlqRTVNaUlnYUdWcFoyaDBQU0l4T1RJaUlISjRQU0kwTWlJZ1ptbHNiRDBpSXpGbU5tWTBZU0l2UGdvZ0lEeHdZWFJvSUdROUlrMDFNaUEyTW1nNE9Hd3RPQ0EzTkdFeE1pQXhNaUF3SURBZ01TMHhNaUF4TVVnM01tRXhNaUF4TWlBd0lEQWdNUzB4TWkweE1Yb2lJR1pwYkd3OUltNXZibVVpSUhOMGNtOXJaVDBpSTJabVptWm1aaUlnYzNSeWIydGxMWGRwWkhSb1BTSTVJaUJ6ZEhKdmEyVXRiR2x1WldwdmFXNDlJbkp2ZFc1a0lpOCtDaUFnUEhCaGRHZ2daRDBpVFRjMElEWXlZVEl5SURJeUlEQWdNQ0F4SURRMElEQWlJR1pwYkd3OUltNXZibVVpSUhOMGNtOXJaVDBpSTJabVptWm1aaUlnYzNSeWIydGxMWGRwWkhSb1BTSTVJaUJ6ZEhKdmEyVXRiR2x1WldOaGNEMGljbTkxYm1RaUx6NEtJQ0E4ZEdWNGRDQjRQU0k1TmlJZ2VUMGlNVEkzSWlCMFpYaDBMV0Z1WTJodmNqMGliV2xrWkd4bElpQm1iMjUwTFdaaGJXbHNlVDBpVTJWbmIyVWdWVWtzSUVGeWFXRnNMQ0J6WVc1ekxYTmxjbWxtSWlCbWIyNTBMWE5wZW1VOUlqUTJJaUJtYjI1MExYZGxhV2RvZEQwaU56QXdJaUJtYVd4c1BTSWpabVptWm1abUlqN2lncjA4TDNSbGVIUStDand2YzNablBnbz0iLCAic2l6ZXMiOiAiYW55IiwgInR5cGUiOiAiaW1hZ2Uvc3ZnK3htbCIsICJwdXJwb3NlIjogImFueSBtYXNrYWJsZSJ9XX0=">
   <style>
