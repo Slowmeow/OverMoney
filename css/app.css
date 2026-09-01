@@ -35,6 +35,13 @@
   --scroll-thumb: #c6cdc4;
   --overlay: rgba(18, 24, 20, .42);
 
+  /* «Яркое» — второй уровень акцента, для тех четырёх мест, где взгляд обязан
+     зацепиться: день закупки, сегодня, главная кнопка, скорая порча.
+     По умолчанию равно акценту, поэтому оформление «Вкладки» не меняется
+     ни на пиксель — новый цвет появляется только там, где его включают. */
+  --bright: var(--accent);
+  --bright-ink: var(--accent-ink);
+
   /* ---------- типографика ----------
      Системный стек: в офлайн-приложении веб-шрифт грузить неоткуда, а Segoe UI
      и SF Pro рисуют кириллицу лучше любого суррогата. */
@@ -126,6 +133,128 @@
     --shadow-lg: 0 8px 24px rgba(0, 0, 0, .38), 0 2px 6px rgba(0, 0, 0, .3);
     --shadow-pop: 0 20px 50px rgba(0, 0, 0, .55);
   }
+}
+
+/* ================= оформление «Хвойный лес» =================
+ *
+ * Включается только в календарном расположении: data-skin ставит app.js.
+ * Вкладок не касается вовсе — там остаётся прежняя палитра.
+ *
+ * Устроено в два уровня, и это главное решение. Глубокая хвоя — рабочий цвет:
+ * ею набраны заголовки, рамки, ссылки, её много. Яркий лайм — цвет внимания,
+ * и он появляется ровно в четырёх местах: день закупки с суммой, сегодняшний
+ * день, главная кнопка действия и то, что скоро испортится. Чем реже яркое,
+ * тем оно заметнее; размажь его по интерфейсу — и не останется способа
+ * сказать «вот сюда смотри».
+ *
+ * Поверхности #ffffff и #1c2023 не тронуты намеренно: под них проверена
+ * палитра графиков на различимость при дальтонизме, и смена фона обесценила
+ * бы ту проверку. Меняется подложка страницы, а не сами карточки.
+ *
+ * Контраст проверен: весь текст проходит WCAG AA (хвоя на белом 9.11,
+ * лайм в тёмной теме 9.41), а день закупки отличается от дня докупки
+ * и после имитации дальтонизма.
+ */
+
+:root[data-skin="forest"] {
+  --bg: #f2f6f3;
+  --surface: #ffffff;          /* зафиксировано, см. выше */
+  --surface-2: #eaf1ec;
+  --surface-3: #dde8e0;
+  --ink: #10231a;
+  --ink-soft: #4a5f53;
+  --ink-faint: #7d8f85;
+  --line: #dde6e0;
+  --line-strong: #c2d2c8;
+  --accent: #14532d;
+  --accent-hover: #0f3f22;
+  --accent-soft: #dcefe3;
+  --accent-ink: #ffffff;
+  --bright: #22c55e;
+  --bright-ink: #06240f;
+  --good: #14532d;
+  --bad: #b91c1c;
+  --bad-soft: #fdeaea;
+  --warn: #b45309;
+  --warn-bg: #fdf1e3;
+  --scroll-thumb: #c2d2c8;
+  --overlay: rgba(8, 20, 13, .46);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-skin="forest"]:not([data-theme="light"]) {
+    --bg: #0d1410;
+    --surface: #1c2023;        /* зафиксировано, см. выше */
+    --surface-2: #232a26;
+    --surface-3: #2c352f;
+    --ink: #e6efe9;
+    --ink-soft: #9db0a5;
+    --ink-faint: #75857b;
+    --line: #2b3630;
+    --line-strong: #3b4841;
+    /* В тёмной теме роли меняются местами: глубокая хвоя на тёмном
+       не читалась бы, поэтому рабочим становится светлый лист. */
+    --accent: #4ade80;
+    --accent-hover: #6ee7a0;
+    --accent-soft: #16281e;
+    --accent-ink: #08130c;
+    --bright: #22c55e;
+    --bright-ink: #06240f;
+    --good: #4ade80;
+    --bad: #f08a7a;
+    --bad-soft: #2a1e1b;
+    --warn: #e0a94f;
+    --warn-bg: #2a2718;
+    --scroll-thumb: #3b4841;
+  }
+}
+
+/* ---- четыре места, где живёт яркое ---- */
+
+/* 1. День закупки: заливка ярким и жирная сумма. Плюс сплошная полоса сверху —
+      цвета мало, 8% мужчин не отличают зелёное от охры, и полоса против
+      пунктира у докупки читается независимо от цветовосприятия. */
+:root[data-skin="forest"] .cal-cell.shop {
+  background: color-mix(in srgb, var(--bright) 16%, var(--surface));
+  border-color: color-mix(in srgb, var(--bright) 45%, var(--line));
+  box-shadow: inset 0 3px 0 0 var(--bright);
+}
+:root[data-skin="forest"] .cal-shop { color: var(--accent); }
+
+/* 2. Докупка — охра и ПУНКТИРНАЯ полоса: другое действие, другая форма. */
+:root[data-skin="forest"] .cal-cell.topup {
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+  box-shadow: inset 0 3px 0 0 var(--warn);
+  border-top-style: dashed;
+}
+
+/* 3. Сегодня: обводка ярким по всему периметру — единственный день в месяце,
+      который выделен рамкой, поэтому находится мгновенно. */
+:root[data-skin="forest"] .cal-cell.today {
+  border-color: var(--bright);
+  border-width: 2px;
+}
+
+/* 4. Главная кнопка действия и скорая порча. */
+:root[data-skin="forest"] .btn.primary {
+  background: var(--bright);
+  border-color: var(--bright);
+  color: var(--bright-ink);
+}
+:root[data-skin="forest"] .btn.primary:hover {
+  background: color-mix(in srgb, var(--bright) 85%, #000);
+  border-color: color-mix(in srgb, var(--bright) 85%, #000);
+}
+:root[data-skin="forest"] .pantry-row.soon { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+:root[data-skin="forest"] .pantry-row.gone { background: color-mix(in srgb, var(--bad) 14%, transparent); }
+
+/* Кружочек выбранного едока — тоже состояние, но НЕ яркое: их на экране
+   несколько, и четыре ярких пятна рядом спорили бы за внимание с днём
+   закупки. Хватает хвойной обводки. */
+:root[data-skin="forest"] .eater.active .eater-face {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* ================= основа ================= */
@@ -1170,6 +1299,13 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .layout-name { font-weight: var(--weight-bold); }
 .layout-short { font-size: var(--text-sm); }
 .layout-why { font-size: var(--text-sm); color: var(--muted); }
+.layout-swatches { display: flex; gap: 4px; margin-top: var(--space-2); }
+.swatch {
+  width: 22px; height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  display: inline-block;
+}
 
 /* ================= календарь ================= */
 

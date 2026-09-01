@@ -46,7 +46,12 @@
         }, [
           h('span.layout-name', { text: def.n + (active ? '  ✓' : '') }),
           h('span.layout-short', { text: def.short }),
-          h('span.layout-why', { text: def.why })
+          h('span.layout-why', { text: def.why }),
+          // Образцы цвета — чтобы выбирать глазами, а не по названию.
+          h('span.layout-swatches', {}, (def.skin === 'forest'
+            ? [['#14532d', 'хвоя'], ['#22c55e', 'яркое'], ['#b45309', 'докупка'], ['#f2f6f3', 'фон']]
+            : [['#1f6f4a', 'зелёный'], ['#8a6a12', 'докупка'], ['#a83a28', 'ошибка'], ['#f5f7f4', 'фон']]
+          ).map(([hex, title]) => h('i.swatch', { title: title, style: { background: hex } })))
         ]);
       })),
       h('p.hint', { text: 'Выбор запоминается на этом устройстве и не переносится на другие. ' +

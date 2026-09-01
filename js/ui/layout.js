@@ -26,7 +26,9 @@
       short: 'Всё по полкам: обзор, неделя, список, цены, отчёты',
       why: 'Видно цифры и то, как они получились. Больше управления, больше экранов.',
       order: ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings', 'account'],
-      home: 'dashboard'
+      home: 'dashboard',
+      // Пусто — значит палитра по умолчанию, та самая, к которой привыкли.
+      skin: ''
     },
     calendar: {
       id: 'calendar',
@@ -34,7 +36,8 @@
       short: 'Месяц на одном экране, едоки кружочками, день открывается нажатием',
       why: 'Видно, что и когда есть и когда идти в магазин. Меньше цифр, больше картины.',
       order: ['calendar', 'list', 'pantry', 'prices', 'settings', 'account'],
-      home: 'calendar'
+      home: 'calendar',
+      skin: 'forest'
     }
   };
 
@@ -52,13 +55,30 @@
     if (!LAYOUTS[id]) return get();
     current = id;
     try { localStorage.setItem(KEY, id); } catch (e) { /* переживёт до перезагрузки */ }
+    applySkin();
     return current;
+  }
+
+  /* Палитра переключается одним признаком на корне страницы, а не подменой
+     файла стилей: так обе темы лежат в одном файле, сборка в один файл для
+     телефона не усложняется, и переключение происходит мгновенно —
+     без вспышки нестилизованного содержимого. */
+  function applySkin() {
+    const skin = def().skin;
+    const root = document.documentElement;
+    if (skin) root.setAttribute('data-skin', skin);
+    else root.removeAttribute('data-skin');
+    // Цвет полосы браузера сверху тоже относится к оформлению: без этого
+    // на телефоне шапка остаётся от прежней темы и выдаёт стык.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', skin === 'forest' ? '#14532d' : '#1f6f4a');
   }
 
   function def() { return LAYOUTS[get()]; }
 
   window.App = window.App || {};
   window.App.layout = {
+    applySkin: applySkin,
     LAYOUTS: LAYOUTS,
     get: get,
     set: set,

@@ -557,6 +557,86 @@ const dropped = store.pruneWeeks('2026-09-05');
 ok('старые недели вычищаются', dropped === 0 || Object.keys(store.get().weeks).every(k => k >= '2026-09-05'),
   'убрано ' + dropped);
 
+// ───────────────────────────────────────────────── цвета
+
+/* Контраст — не вкусовщина, а требование: текст, который не читается
+   на солнце или при слабом зрении, не выполняет свою работу. Проверяется
+   счётом по WCAG, а не на глаз, потому что на глаз все цвета «нормальные». */
+section('Цвета и контраст');
+
+function luminance(hex) {
+  const c = hex.replace('#', '').match(/../g).map(function (h) {
+    const v = parseInt(h, 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+
+function contrast(a, b) {
+  const l1 = luminance(a), l2 = luminance(b);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
+
+/* Грубая имитация дейтеранопии — самой частой формы дальтонизма, она
+   у 8% мужчин. Нужна затем, что зелёный и охряный для них сближаются,
+   а именно ими различаются день закупки и день докупки. */
+function deuteranope(hex) {
+  const [R, G, B] = hex.replace('#', '').match(/../g).map(h => parseInt(h, 16));
+  const out = [0.625 * R + 0.375 * G, 0.7 * R + 0.3 * G, 0.3 * G + 0.7 * B];
+  return '#' + out.map(v => Math.min(255, Math.max(0, Math.round(v))).toString(16).padStart(2, '0')).join('');
+}
+
+const cssSrc = fs.readFileSync(path.join(__dirname, '..', 'css', 'app.css'), 'utf8');
+
+function tokenIn(block, name) {
+  const at = cssSrc.indexOf(block);
+  if (at === -1) return null;
+  const chunk = cssSrc.slice(at, cssSrc.indexOf('}', at));
+  const m = chunk.match(new RegExp('--' + name + ':\\s*(#[0-9a-fA-F]{6})'));
+  return m ? m[1] : null;
+}
+
+{
+  const forest = ':root[data-skin="forest"] {';
+  const accent = tokenIn(forest, 'accent');
+  const bright = tokenIn(forest, 'bright');
+  const warn = tokenIn(forest, 'warn');
+  const ink = tokenIn(forest, 'ink');
+  const surface = tokenIn(forest, 'surface');
+
+  ok('палитра «Хвойный лес» найдена в стилях', !!(accent && bright && warn && ink && surface),
+    accent ? 'хвоя ' + accent + ', яркое ' + bright : 'не найдена');
+
+  if (accent && surface) {
+    ok('основной текст читается', contrast(ink, surface) >= 4.5,
+      contrast(ink, surface).toFixed(2) + ' при норме 4,5');
+    ok('акцент читается как текст', contrast(accent, surface) >= 4.5,
+      contrast(accent, surface).toFixed(2));
+    ok('белое на акценте читается', contrast('#ffffff', accent) >= 4.5,
+      contrast('#ffffff', accent).toFixed(2));
+    ok('предупреждение читается', contrast(warn, surface) >= 4.5,
+      contrast(warn, surface).toFixed(2));
+    ok('тёмный текст на ярком читается', contrast(ink, bright) >= 4.5,
+      contrast(ink, bright).toFixed(2));
+
+    const plain = contrast(bright, warn);
+    const blind = contrast(deuteranope(bright), deuteranope(warn));
+    ok('день закупки отличается от дня докупки', plain >= 1.5, plain.toFixed(2));
+    ok('отличается и при дальтонизме', blind >= 1.5,
+      blind.toFixed(2) + ' — плюс сплошная полоса против пунктирной, это уже не цвет');
+  }
+
+  // Форма как второй признак: на цвет одному полагаться нельзя.
+  ok('дни закупки и докупки различаются не только цветом',
+    /\.cal-cell\.topup[\s\S]{0,200}border-top-style:\s*dashed/.test(cssSrc),
+    'у докупки пунктирная полоса сверху, у закупки сплошная');
+
+  // Вкладки не должны измениться ни на пиксель.
+  ok('оформление «Вкладки» осталось прежним',
+    /--accent:\s*#1f6f4a/.test(cssSrc) && /--bright:\s*var\(--accent\)/.test(cssSrc),
+    'яркое по умолчанию равно акценту, новых цветов там не появилось');
+}
+
 // ───────────────────────────────────────────────── настройки облака
 
 /* Расхождение между адресом проекта и правилами загрузки ломает вход молча:
