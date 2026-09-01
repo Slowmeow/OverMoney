@@ -1304,6 +1304,16 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   .eater-face { width: 40px; height: 40px; }
 }
 
+/* ================= сроки годности ================= */
+
+.pantry-expiry { font-size: var(--text-sm); color: var(--muted); }
+/* Цветом помечается строка целиком, а не только подпись: взгляд у открытого
+   холодильника скользит по списку, а не читает каждую строку. */
+.pantry-row.soon { background: color-mix(in srgb, var(--warn, #b7791f) 10%, transparent); }
+.pantry-row.soon .pantry-expiry { color: var(--warn, #b7791f); font-weight: var(--weight-medium); }
+.pantry-row.gone { background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.pantry-row.gone .pantry-expiry { color: var(--bad); font-weight: var(--weight-medium); }
+
 /* ================= печать ================= */
 
 @media print {

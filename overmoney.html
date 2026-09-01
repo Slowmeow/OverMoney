@@ -1364,6 +1364,16 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   .eater-face { width: 40px; height: 40px; }
 }
 
+/* ================= сроки годности ================= */
+
+.pantry-expiry { font-size: var(--text-sm); color: var(--muted); }
+/* Цветом помечается строка целиком, а не только подпись: взгляд у открытого
+   холодильника скользит по списку, а не читает каждую строку. */
+.pantry-row.soon { background: color-mix(in srgb, var(--warn, #b7791f) 10%, transparent); }
+.pantry-row.soon .pantry-expiry { color: var(--warn, #b7791f); font-weight: var(--weight-medium); }
+.pantry-row.gone { background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.pantry-row.gone .pantry-expiry { color: var(--bad); font-weight: var(--weight-medium); }
+
 /* ================= печать ================= */
 
 @media print {
@@ -3896,17 +3906,61 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 
   // ---------- КЛАДОВАЯ ----------
 
+  /* Когда продукт положили в кладовую.
+   *
+   * Без этой даты срок годности посчитать не из чего: у продукта в каталоге
+   * есть срок хранения в днях, но нет точки отсчёта. Дата обновляется при
+   * пополнении — это осознанное упрощение: раздельно считать сроки для двух
+   * пачек одного и того же продукта приложение не  умеет, и притворяться,   * что умеет, было бы хуже. Свежая пачка продлевает срок всей позиции. */
+  function touchPantryDate(productId, when) {
+    const s = get();
+    s.pantryDates = s.pantryDates || {};
+    s.pantryDates[productId] = when || today();
+  }
+
+  /* Когда позиция испортится и сколько дней осталось.
+     Возвращает null, если срок хранения неизвестен или дата не записана —
+     тогда интерфейс просто ничего не обещает, а не выдумывает цифру. */
+  function expiryOf(productId) {
+    const s = get();
+    const product = productsById()[productId];
+    const added = (s.pantryDates || {})[productId];
+    if (!product || !product.life || !added) return null;
+    const until = new Date(added + 'T00:00:00');
+    until.setDate(until.getDate() + product.life);
+    const left = Math.ceil((until - new Date(today() + 'T00:00:00')) / 86400000);
+    return { added: added, until: localDate(until), daysLeft: left, life: product.life };
+  }
+
+  /* Что скоро испортится — по этому списку и строится подсказка «съешьте это».
+     Порог в днях задаётся вызывающим: для творога и для крупы «скоро» разное. */
+  function expiringSoon(withinDays) {
+    const s = get();
+    const limit = withinDays === undefined ? 3 : withinDays;
+    return Object.keys(s.pantry || {}).map(function (id) {
+      const e = expiryOf(id);
+      return e ? Object.assign({ id: id }, e) : null;
+    }).filter(e => e && e.daysLeft <= limit).sort((a, b) => a.daysLeft - b.daysLeft);
+  }
+
   function pantryAdd(productId, grams) {
     const s = get();
     s.pantry[productId] = Math.max(0, (s.pantry[productId] || 0) + grams);
     if (s.pantry[productId] === 0) delete s.pantry[productId];
+    else if (grams > 0) touchPantryDate(productId);
     save();
   }
 
   function pantrySet(productId, grams) {
     const s = get();
-    if (grams > 0) s.pantry[productId] = grams;
-    else delete s.pantry[productId];
+    if (grams > 0) {
+      const isNew = !s.pantry[productId];
+      s.pantry[productId] = grams;
+      if (isNew) touchPantryDate(productId);
+    } else {
+      delete s.pantry[productId];
+      if (s.pantryDates) delete s.pantryDates[productId];
+    }
     save();
   }
 
@@ -3999,7 +4053,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
     recipes, allRecipes, householdRestrictions, activeDiets, blockedBy, isProductAllowed, recipeAvailability,
-    pantryAdd, pantrySet,
+    pantryAdd, pantrySet, expiryOf, expiringSoon, touchPantryDate,
     weeklyBudget, regularsWeeklyCost, PERIODS, periodWeeks,
     dismissSwap, restoreSwaps,
     exportJson, importJson,
@@ -8680,6 +8734,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     const value = ids.reduce((sum, id) => sum + state.pantry[id] * S().pricePerBase(byId[id]), 0);
 
     return h('div.view', {}, [
+      expiringCard(),
       u.card('Что есть дома', [
         h('p.hint', { text: 'Отметьте продукты, которые уже лежат в холодильнике и шкафу. ' +
           'Приложение вычтет их из списка покупок и постарается собрать меню вокруг них, ' +
@@ -8780,6 +8835,75 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     return 1;
   }
 
+  /* Срок годности показывается словами, а не датой.
+   *
+   * «до 12 сентября» требует от человека вычесть сегодня из этой даты, а он
+   * стоит у открытого холодильника. «Осталось 2 дня» — уже ответ. Дата всё
+   * равно рядом, мелким шрифтом, для тех случаев, когда важно точное число.
+   *
+   * Когда срока нет — молчим. Дата закладки записывается только с той версии,
+   * где появилась эта возможность, и у всего, что лежало в кладовой раньше,
+   * точки отсчёта просто нет. Выдумать её нельзя: показать наугад «испортится
+   * завтра» на крупе, купленной месяц назад, значит научить не верить
+   * приложению. */
+  function expiryLine(productId) {
+    const u = U(), h = u.h;
+    const e = S().expiryOf(productId);
+    if (!e) return null;
+
+    let text;
+    if (e.daysLeft < 0) text = 'просрочено ' + plural(-e.daysLeft, 'день', 'дня', 'дней') + ' назад';
+    else if (e.daysLeft === 0) text = 'сегодня последний день';
+    else if (e.daysLeft === 1) text = 'остался 1 день';
+    else text = 'осталось ' + plural(e.daysLeft, 'день', 'дня', 'дней');
+
+    return h('span.pantry-expiry', { text: text + ' · до ' + humanDate(e.until) });
+  }
+
+  function expiryClass(productId) {
+    const e = S().expiryOf(productId);
+    if (!e) return '';
+    if (e.daysLeft < 0) return '.gone';
+    if (e.daysLeft <= 2) return '.soon';
+    return '';
+  }
+
+  function plural(n, one, few, many) {
+    const mod10 = n % 10, mod100 = n % 100;
+    let word = many;
+    if (mod10 === 1 && mod100 !== 11) word = one;
+    else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) word = few;
+    return n + ' ' + word;
+  }
+
+  function humanDate(iso) {
+    const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    const d = new Date(iso + 'T12:00:00');
+    return d.getDate() + ' ' + MONTHS[d.getMonth()];
+  }
+
+  /* Что вот-вот испортится — наверху, до всего остального. Ради этого
+     сроки годности и заводились: не «посмотреть даты», а «съешьте это сейчас». */
+  function expiringCard() {
+    const u = U(), h = u.h;
+    const soon = S().expiringSoon(2);
+    if (!soon.length) return null;
+    const byId = S().productsById();
+
+    return u.card('Съесть в ближайшие дни', [
+      h('ul.plain', {}, soon.map(function (e) {
+        const p = byId[e.id];
+        if (!p) return null;
+        const when = e.daysLeft < 0 ? 'просрочено'
+          : e.daysLeft === 0 ? 'сегодня последний день'
+          : 'осталось ' + plural(e.daysLeft, 'день', 'дня', 'дней');
+        return h('li', { text: p.n + ' — ' + when });
+      })),
+      h('p.hint', { text: 'Сроки считаются от дня, когда вы внесли продукт, по обычному сроку ' +
+        'хранения из каталога. Это ориентир, а не то, что написано на вашей упаковке.' })
+    ], 'over-card');
+  }
+
   function pantryRow(product, grams) {
     const u = U(), h = u.h;
     const value = grams * S().pricePerBase(product);
@@ -8792,10 +8916,11 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       }
     });
 
-    return h('div.pantry-row', {}, [
+    return h('div.pantry-row' + expiryClass(product.id), {}, [
       h('div.pantry-main', {}, [
         h('span.pantry-name', { text: product.n }),
-        h('span.pantry-meta', { text: SH().formatAmount(product, grams) + ' · ' + u.money(value) })
+        h('span.pantry-meta', { text: SH().formatAmount(product, grams) + ' · ' + u.money(value) }),
+        expiryLine(product.id)
       ]),
       amount,
       h('span.unit-tag', { text: product.unit === 'ml' ? 'мл' : 'г' }),

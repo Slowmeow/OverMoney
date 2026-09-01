@@ -346,6 +346,46 @@ ok('компромисс обратим', !!hardPlan.beforeHardFit);
 planner.undoHardFit(hardPlan);
 ok('откат возвращает исходный план', hardPlan.cost === before, hardPlan.cost + ' ₽');
 
+// ───────────────────────────────────────────────── сроки годности
+
+section('Сроки годности в кладовой');
+
+function daysAgo(n) {
+  const d = new Date(store.today() + 'T00:00:00');
+  d.setDate(d.getDate() - n);
+  return store.localDate(d);
+}
+
+store.get().pantry = {};
+store.get().pantryDates = {};
+store.pantrySet('tvorog5', 400);
+store.pantrySet('buckwheat', 800);
+
+const freshExpiry = store.expiryOf('tvorog5');
+ok('дата закладки записывается сама', !!freshExpiry && freshExpiry.added === store.today(),
+  freshExpiry ? 'заложено ' + freshExpiry.added : 'нет даты');
+ok('срок считается от закладки плюс срок хранения',
+  freshExpiry && freshExpiry.daysLeft === freshExpiry.life,
+  freshExpiry ? freshExpiry.daysLeft + ' дн. при сроке хранения ' + freshExpiry.life : '');
+
+store.touchPantryDate('tvorog5', daysAgo(99));
+const rotten = store.expiryOf('tvorog5');
+ok('просроченное показывает отрицательный остаток', rotten.daysLeft < 0, rotten.daysLeft + ' дн.');
+ok('просроченное попадает в «съесть скоро»',
+  store.expiringSoon(2).some(e => e.id === 'tvorog5'));
+ok('долгоиграющее не попадает', !store.expiringSoon(2).some(e => e.id === 'buckwheat'),
+  'гречка со сроком ' + store.productsById().buckwheat.life + ' дн. не в списке');
+
+ok('без даты закладки срок не выдумывается', store.expiryOf('rice') === null,
+  'рис в кладовую не клали — приложение молчит, а не гадает');
+
+store.pantrySet('tvorog5', 0);
+ok('снятое с кладовой забывает и дату', store.expiryOf('tvorog5') === null);
+
+store.get().pantry = {};
+store.get().pantryDates = {};
+store.persist();
+
 // ───────────────────────────────────────────────── недели в месяце
 
 /* Месячный календарь склеен из недельных планов, и вся склейка держится

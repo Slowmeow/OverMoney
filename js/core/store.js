@@ -723,17 +723,61 @@
 
   // ---------- КЛАДОВАЯ ----------
 
+  /* Когда продукт положили в кладовую.
+   *
+   * Без этой даты срок годности посчитать не из чего: у продукта в каталоге
+   * есть срок хранения в днях, но нет точки отсчёта. Дата обновляется при
+   * пополнении — это осознанное упрощение: раздельно считать сроки для двух
+   * пачек одного и того же продукта приложение не  умеет, и притворяться,   * что умеет, было бы хуже. Свежая пачка продлевает срок всей позиции. */
+  function touchPantryDate(productId, when) {
+    const s = get();
+    s.pantryDates = s.pantryDates || {};
+    s.pantryDates[productId] = when || today();
+  }
+
+  /* Когда позиция испортится и сколько дней осталось.
+     Возвращает null, если срок хранения неизвестен или дата не записана —
+     тогда интерфейс просто ничего не обещает, а не выдумывает цифру. */
+  function expiryOf(productId) {
+    const s = get();
+    const product = productsById()[productId];
+    const added = (s.pantryDates || {})[productId];
+    if (!product || !product.life || !added) return null;
+    const until = new Date(added + 'T00:00:00');
+    until.setDate(until.getDate() + product.life);
+    const left = Math.ceil((until - new Date(today() + 'T00:00:00')) / 86400000);
+    return { added: added, until: localDate(until), daysLeft: left, life: product.life };
+  }
+
+  /* Что скоро испортится — по этому списку и строится подсказка «съешьте это».
+     Порог в днях задаётся вызывающим: для творога и для крупы «скоро» разное. */
+  function expiringSoon(withinDays) {
+    const s = get();
+    const limit = withinDays === undefined ? 3 : withinDays;
+    return Object.keys(s.pantry || {}).map(function (id) {
+      const e = expiryOf(id);
+      return e ? Object.assign({ id: id }, e) : null;
+    }).filter(e => e && e.daysLeft <= limit).sort((a, b) => a.daysLeft - b.daysLeft);
+  }
+
   function pantryAdd(productId, grams) {
     const s = get();
     s.pantry[productId] = Math.max(0, (s.pantry[productId] || 0) + grams);
     if (s.pantry[productId] === 0) delete s.pantry[productId];
+    else if (grams > 0) touchPantryDate(productId);
     save();
   }
 
   function pantrySet(productId, grams) {
     const s = get();
-    if (grams > 0) s.pantry[productId] = grams;
-    else delete s.pantry[productId];
+    if (grams > 0) {
+      const isNew = !s.pantry[productId];
+      s.pantry[productId] = grams;
+      if (isNew) touchPantryDate(productId);
+    } else {
+      delete s.pantry[productId];
+      if (s.pantryDates) delete s.pantryDates[productId];
+    }
     save();
   }
 
@@ -826,7 +870,7 @@
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
     recipes, allRecipes, householdRestrictions, activeDiets, blockedBy, isProductAllowed, recipeAvailability,
-    pantryAdd, pantrySet,
+    pantryAdd, pantrySet, expiryOf, expiringSoon, touchPantryDate,
     weeklyBudget, regularsWeeklyCost, PERIODS, periodWeeks,
     dismissSwap, restoreSwaps,
     exportJson, importJson,
