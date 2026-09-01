@@ -224,6 +224,56 @@
     ]);
   }
 
+  /* Листание экранов пальцем.
+   *
+   * Просилось в календарном расположении, но включено везде: жест, который
+   * работает на одном экране и не работает на соседнем, раздражает сильнее,
+   * чем его отсутствие.
+   *
+   * Два условия отсеивают ложные срабатывания. Движение должно быть в основном
+   * горизонтальным — иначе обычная прокрутка страницы пальцем листала бы
+   * вкладки. И оно должно быть быстрым: медленное перетаскивание — это чаще
+   * всего попытка выделить текст или прокрутить широкую таблицу.
+   *
+   * Внутри того, что и само прокручивается вбок — таблиц, списка вкладок, —
+   * жест не перехватывается вовсе: там он уже занят. */
+  function setupSwipes() {
+    const main = document.getElementById('view');
+    if (!main || !('ontouchstart' in window)) return;
+
+    let x0 = 0, y0 = 0, t0 = 0, tracking = false;
+
+    main.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) { tracking = false; return; }
+      const t = e.touches[0];
+      // Внутри горизонтально прокручиваемого — не наше дело.
+      let node = e.target;
+      while (node && node !== main) {
+        if (node.scrollWidth > node.clientWidth + 4) { tracking = false; return; }
+        node = node.parentNode;
+      }
+      x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); tracking = true;
+    }, { passive: true });
+
+    main.addEventListener('touchend', function (e) {
+      if (!tracking) return;
+      tracking = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - x0, dy = t.clientY - y0, dt = Date.now() - t0;
+      if (dt > 600) return;                       // медленное — не жест
+      if (Math.abs(dx) < 60) return;              // короткое — не жест
+      if (Math.abs(dx) < Math.abs(dy) * 1.8) return;  // больше вертикали — прокрутка
+
+      const list = order().filter(n => window.App.views[n] &&
+        (n !== 'account' || (window.App.cloud && window.App.cloud.available())));
+      const at = list.indexOf(current);
+      if (at === -1) return;
+      const next = dx < 0 ? at + 1 : at - 1;
+      if (next < 0 || next >= list.length) return;
+      go(list[next]);
+    }, { passive: true });
+  }
+
   function init() {
     window.App.store.load();
 
@@ -248,6 +298,7 @@
       if (name && name !== current && window.App.views[name]) go(name);
     });
 
+    setupSwipes();
     setupAccount();
     setupSync();
 

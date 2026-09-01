@@ -35,6 +35,13 @@
       meals: ['breakfast', 'lunch', 'dinner'],
       // Диетические режимы: гастрит, непереносимости и прочее.
       diets: [],
+      // Любимые и нелюбимые блюда. Хранятся у человека, а действуют на общее
+      // меню: кастрюля одна, и если один не ест рыбу, рыбы не будет у обоих.
+      likes: [],
+      dislikes: [],
+      // Сколько этот человек готов вкладывать в общий бюджет за период.
+      // Ноль означает «не указано» — тогда бюджет берётся общей суммой.
+      contributes: 0,
       needsSetup: true
     };
   }
@@ -52,6 +59,8 @@
         maxRepeat: 2,             // сколько раз одно блюдо может встретиться за неделю
         overspend: 0,             // допустимое превышение бюджета, доля (0 = жёсткий потолок)
         priceStaleDays: 30,
+        // Считать бюджет суммой вкладов из профилей, а не одной цифрой.
+        budgetFromPeople: false,
         proteinFloor: 0.9,        // белок не опускаем ниже 90% нормы даже ради бюджета
         kcalTolerance: 0.07,      // допустимый разброс калорий по дню
         startDay: today()
@@ -304,6 +313,10 @@
     merged.people.forEach(function (p) {
       if (!Array.isArray(p.meals) || !p.meals.length) p.meals = commonMeals.slice();
       if (!Array.isArray(p.diets)) p.diets = [];
+      if (!Array.isArray(p.likes)) p.likes = [];
+      if (!Array.isArray(p.dislikes)) p.dislikes = [];
+      const give = Number(p.contributes);
+      p.contributes = isFinite(give) && give > 0 ? give : 0;
       // Числа, по которым считается норма. Строка «семьдесят» вместо веса
       // превратила бы всю арифметику в NaN и тихо испортила бы весь план.
       ['age', 'height', 'weight', 'activity'].forEach(function (k) {
@@ -648,6 +661,22 @@
     return window.App.restrictionsFor ? window.App.restrictionsFor(ids) : { avoid: {}, limit: {}, methods: {} };
   }
 
+  /* Вкусы всего хозяйства одним объектом.
+   *
+   * Готовится одна кастрюля, поэтому предпочтения складываются, а не
+   * применяются к каждому отдельно: блюдо, которое любят двое, ставится
+   * охотнее, чем то, которое любит один. Нелюбимое хотя бы одним — это
+   * почти запрет: заставлять человека есть то, что он отметил как нелюбимое,
+   * приложение не должно, даже если второму оно нравится. */
+  function tastes() {
+    const likes = {}, dislikes = {};
+    get().people.forEach(function (p) {
+      (p.likes || []).forEach(id => { likes[id] = (likes[id] || 0) + 1; });
+      (p.dislikes || []).forEach(id => { dislikes[id] = (dislikes[id] || 0) + 1; });
+    });
+    return { likes: likes, dislikes: dislikes };
+  }
+
   function activeDiets() {
     const ids = [];
     get().people.forEach(function (p) {
@@ -785,10 +814,23 @@
 
   /* Приводим бюджет к неделе и вычитаем всё, что не относится к готовке дома:
      бытовую химию и еду вне дома. Остаток — это то, на что реально закупаем продукты. */
+  /* Сумма вкладов, если люди указали, кто сколько кладёт в общий котёл.
+     Ноль означает «не указано»: пока никто ничего не вписал, бюджет берётся
+     общей цифрой из настроек, как раньше. */
+  function contributions() {
+    return (get().people || []).reduce((sum, p) => sum + (Number(p.contributes) || 0), 0);
+  }
+
+  function budgetAmount() {
+    const s = get();
+    const shared = contributions();
+    return (s.settings.budgetFromPeople && shared > 0) ? shared : s.settings.budget;
+  }
+
   function weeklyBudget() {
     const s = get();
     const weeks = s.settings.period === 'month' ? s.settings.weeksInMonth : 1;
-    const gross = s.settings.budget / weeks;
+    const gross = budgetAmount() / weeks;
     const outside = s.settings.outsideFood / weeks;
     const regulars = regularsWeeklyCost();
     return {
@@ -869,9 +911,9 @@
     revision: () => revision,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
-    recipes, allRecipes, householdRestrictions, activeDiets, blockedBy, isProductAllowed, recipeAvailability,
+    recipes, allRecipes, householdRestrictions, activeDiets, tastes, blockedBy, isProductAllowed, recipeAvailability,
     pantryAdd, pantrySet, expiryOf, expiringSoon, touchPantryDate,
-    weeklyBudget, regularsWeeklyCost, PERIODS, periodWeeks,
+    weeklyBudget, regularsWeeklyCost, contributions, budgetAmount, PERIODS, periodWeeks,
     dismissSwap, restoreSwaps,
     exportJson, importJson,
     defaultPerson

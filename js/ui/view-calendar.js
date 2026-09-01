@@ -43,8 +43,26 @@
     U().refresh();
   }
 
+  // Дни докупки считаются по всему плану, поэтому не на каждую клетку заново:
+  // тридцать клеток — это тридцать проходов по неделе на ровном месте.
+  let topUpCache = null;
+
+  function topUpAt(dateStr) {
+    if (!topUpCache) {
+      topUpCache = {};
+      const weeks = S().allWeeks();
+      Object.keys(weeks).forEach(function (start) {
+        window.App.shopping.topUpDays(weeks[start]).forEach(function (t) {
+          topUpCache[t.date] = t;
+        });
+      });
+    }
+    return topUpCache[dateStr] || null;
+  }
+
   function render() {
     const u = U(), h = u.h;
+    topUpCache = null;
     if (!shownMonth) shownMonth = monthStart(new Date());
 
     return h('div.view.cal-view', {}, [
@@ -132,11 +150,14 @@
     const isShopDay = S().weekStart(dateStr) === dateStr;
     const week = found ? found.plan : S().weekAt(S().weekStart(dateStr));
 
+    const topUp = found ? topUpAt(dateStr) : null;
+
     const classes = ['cal-cell'];
     if (isToday) classes.push('today');
     if (openDay === dateStr) classes.push('open');
     if (!found) classes.push('blank');
     if (isShopDay && week) classes.push('shop');
+    else if (topUp) classes.push('topup');
 
     const kids = [h('span.cal-num', { text: String(num) })];
 
@@ -144,6 +165,9 @@
       // Сумма на дне закупки — стоимость списка именно этой недели,
       // а не доля от месяца: в магазин идут с ней.
       kids.push(h('span.cal-shop', { text: u.money(week.cost || 0) }));
+    } else if (topUp) {
+      // Небольшая докупка: то, что до этого дня просто не долежит.
+      kids.push(h('span.cal-topup', { text: '+' + u.money(topUp.cost) }));
     }
 
     if (found) {
@@ -184,7 +208,8 @@
   function legend() {
     const u = U(), h = u.h;
     return h('div.cal-legend', {}, [
-      h('span', {}, [h('i.dot.shop'), 'день закупки и сумма на неё']),
+      h('span', {}, [h('i.dot.shop'), 'большая закупка на неделю']),
+      h('span', {}, [h('i.dot.topup'), 'докупить скоропорт']),
       h('span', {}, [h('i.dot.today'), 'сегодня']),
       h('span', {}, [h('i.dot.blank'), 'неделя ещё не собрана'])
     ]);
@@ -339,7 +364,17 @@
     const cost = P().dayCost(found.plan, found.day);
     const isShopDay = S().weekStart(found.day.date) === found.day.date;
 
+    const topUp = topUpAt(found.day.date);
+
     return h('div.day-foot', {}, [
+      topUp ? h('div.note', {}, [
+        h('p', { text: 'В этот день зайти за скоропортящимся — примерно на ' + u.money(topUp.cost) + ':' }),
+        h('ul.plain', {}, topUp.items.map(i =>
+          h('li', { text: i.product.n + ' — ' + window.App.shopping.formatAmount(i.product, i.grams) }))),
+        h('p.hint', { text: 'Эти продукты не долежат с большой закупки: срок хранения короче, ' +
+          'чем прошло дней с начала недели. Их стоимость уже входит в сумму недели, ' +
+          'это не сверх бюджета.' })
+      ]) : null,
       h('p.hint', { text: 'Еда этого дня обходится примерно в ' + u.money(cost) +
         '. Это доля от закупки на неделю, а не отдельный поход в магазин.' }),
       isShopDay

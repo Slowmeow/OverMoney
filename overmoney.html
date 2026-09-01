@@ -1305,6 +1305,10 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .cal-cell.today { border-color: var(--accent); border-width: 2px; }
 .cal-cell.open { background: var(--surface-2); border-color: var(--accent); }
 .cal-cell.shop { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+/* Докупка — другим цветом, а не бледнее: это другое действие, а не «то же,
+   но поменьше». В большую закупку идут со списком, в докупку — за молоком. */
+.cal-cell.topup { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); }
+.cal-topup { font-size: 0.62rem; color: var(--warn); font-weight: var(--weight-bold); line-height: 1; }
 
 .cal-num { font-weight: var(--weight-bold); font-size: var(--text-sm); line-height: 1.1; }
 .cal-shop { font-size: 0.62rem; color: var(--accent); font-weight: var(--weight-bold); line-height: 1; }
@@ -1318,6 +1322,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .dot.shop { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
+.dot.topup { background: color-mix(in srgb, var(--warn) 55%, var(--surface)); }
 .dot.today { border: 2px solid var(--accent); }
 .dot.blank { border: 1px dashed var(--line); }
 
@@ -1363,6 +1368,23 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   .cal-kcal { display: none; }        /* на узких экранах числу дня нужнее место */
   .eater-face { width: 40px; height: 40px; }
 }
+
+/* ---- вкусы: любимое и нелюбимое ---- */
+
+.tastes { display: grid; gap: var(--space-5); margin: var(--space-5) 0; }
+.taste-group { display: grid; gap: var(--space-3); }
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.chip {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 3px var(--space-4);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+.chip:hover { border-color: var(--bad); color: var(--bad); }
 
 /* ================= сроки годности ================= */
 
@@ -3218,6 +3240,13 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       meals: ['breakfast', 'lunch', 'dinner'],
       // Диетические режимы: гастрит, непереносимости и прочее.
       diets: [],
+      // Любимые и нелюбимые блюда. Хранятся у человека, а действуют на общее
+      // меню: кастрюля одна, и если один не ест рыбу, рыбы не будет у обоих.
+      likes: [],
+      dislikes: [],
+      // Сколько этот человек готов вкладывать в общий бюджет за период.
+      // Ноль означает «не указано» — тогда бюджет берётся общей суммой.
+      contributes: 0,
       needsSetup: true
     };
   }
@@ -3235,6 +3264,8 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
         maxRepeat: 2,             // сколько раз одно блюдо может встретиться за неделю
         overspend: 0,             // допустимое превышение бюджета, доля (0 = жёсткий потолок)
         priceStaleDays: 30,
+        // Считать бюджет суммой вкладов из профилей, а не одной цифрой.
+        budgetFromPeople: false,
         proteinFloor: 0.9,        // белок не опускаем ниже 90% нормы даже ради бюджета
         kcalTolerance: 0.07,      // допустимый разброс калорий по дню
         startDay: today()
@@ -3487,6 +3518,10 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     merged.people.forEach(function (p) {
       if (!Array.isArray(p.meals) || !p.meals.length) p.meals = commonMeals.slice();
       if (!Array.isArray(p.diets)) p.diets = [];
+      if (!Array.isArray(p.likes)) p.likes = [];
+      if (!Array.isArray(p.dislikes)) p.dislikes = [];
+      const give = Number(p.contributes);
+      p.contributes = isFinite(give) && give > 0 ? give : 0;
       // Числа, по которым считается норма. Строка «семьдесят» вместо веса
       // превратила бы всю арифметику в NaN и тихо испортила бы весь план.
       ['age', 'height', 'weight', 'activity'].forEach(function (k) {
@@ -3831,6 +3866,22 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     return window.App.restrictionsFor ? window.App.restrictionsFor(ids) : { avoid: {}, limit: {}, methods: {} };
   }
 
+  /* Вкусы всего хозяйства одним объектом.
+   *
+   * Готовится одна кастрюля, поэтому предпочтения складываются, а не
+   * применяются к каждому отдельно: блюдо, которое любят двое, ставится
+   * охотнее, чем то, которое любит один. Нелюбимое хотя бы одним — это
+   * почти запрет: заставлять человека есть то, что он отметил как нелюбимое,
+   * приложение не должно, даже если второму оно нравится. */
+  function tastes() {
+    const likes = {}, dislikes = {};
+    get().people.forEach(function (p) {
+      (p.likes || []).forEach(id => { likes[id] = (likes[id] || 0) + 1; });
+      (p.dislikes || []).forEach(id => { dislikes[id] = (dislikes[id] || 0) + 1; });
+    });
+    return { likes: likes, dislikes: dislikes };
+  }
+
   function activeDiets() {
     const ids = [];
     get().people.forEach(function (p) {
@@ -3968,10 +4019,23 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 
   /* Приводим бюджет к неделе и вычитаем всё, что не относится к готовке дома:
      бытовую химию и еду вне дома. Остаток — это то, на что реально закупаем продукты. */
+  /* Сумма вкладов, если люди указали, кто сколько кладёт в общий котёл.
+     Ноль означает «не указано»: пока никто ничего не вписал, бюджет берётся
+     общей цифрой из настроек, как раньше. */
+  function contributions() {
+    return (get().people || []).reduce((sum, p) => sum + (Number(p.contributes) || 0), 0);
+  }
+
+  function budgetAmount() {
+    const s = get();
+    const shared = contributions();
+    return (s.settings.budgetFromPeople && shared > 0) ? shared : s.settings.budget;
+  }
+
   function weeklyBudget() {
     const s = get();
     const weeks = s.settings.period === 'month' ? s.settings.weeksInMonth : 1;
-    const gross = s.settings.budget / weeks;
+    const gross = budgetAmount() / weeks;
     const outside = s.settings.outsideFood / weeks;
     const regulars = regularsWeeklyCost();
     return {
@@ -4052,9 +4116,9 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     revision: () => revision,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
-    recipes, allRecipes, householdRestrictions, activeDiets, blockedBy, isProductAllowed, recipeAvailability,
+    recipes, allRecipes, householdRestrictions, activeDiets, tastes, blockedBy, isProductAllowed, recipeAvailability,
     pantryAdd, pantrySet, expiryOf, expiringSoon, touchPantryDate,
-    weeklyBudget, regularsWeeklyCost, PERIODS, periodWeeks,
+    weeklyBudget, regularsWeeklyCost, contributions, budgetAmount, PERIODS, periodWeeks,
     dismissSwap, restoreSwaps,
     exportJson, importJson,
     defaultPerson
@@ -4989,8 +5053,87 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     return n + ' × ' + p.pl;
   }
 
+  /* Сводка по нескольким неделям: что всего купить за месяц, почём и сколько
+   * это весит.
+   *
+   * Вес считается по-настоящему полезным: сколько килограммов придётся
+   * донести из магазина. Поэтому складывается купленный вес, а не съедобный —
+   * кожуру тоже несут в руках. Штучное без массы (туалетная бумага, губки)
+   * в вес не идёт: сложить рулоны с граммами нельзя.
+   *
+   * Недели складываются как отдельные закупки, а не как одна большая. Это
+   * не приближение, а правда: упаковки покупаются в каждый поход заново,
+   * и объединять их в один список значило бы занизить сумму на переплате
+   * за целые пачки — ровно на той ошибке, из-за которой считаем по упаковкам. */
+  function monthSummary(plans) {
+    const totals = {};
+    let cost = 0, weight = 0;
+    const weeks = [];
+
+    plans.forEach(function (entry) {
+      const list = buildList(entry.plan);
+      cost += list.total;
+      list.items.forEach(function (it) {
+        if (it.buyAmount <= 0) return;
+        const id = it.product.id;
+        const acc = totals[id] || (totals[id] = { product: it.product, amount: 0, cost: 0, packs: 0 });
+        acc.amount += it.buyAmount;
+        acc.cost += it.cost;
+        acc.packs += it.packs;
+        // Вес имеет смысл только там, где базовая единица — грамм.
+        if (it.product.unit !== 'ml' && it.product.pack >= 50) weight += it.buyAmount;
+      });
+      weeks.push({ start: entry.start, plan: entry.plan, list: list, label: entry.label });
+    });
+
+    const items = Object.keys(totals).map(k => totals[k]).sort((a, b) => b.cost - a.cost);
+    return {
+      items: items,
+      cost: Math.round(cost),
+      weightKg: Math.round(weight / 100) / 10,
+      weeks: weeks,
+      byCategory: groupByCategory(items.map(i => ({
+        product: i.product, cost: i.cost, buyAmount: i.amount, packs: i.packs
+      })))
+    };
+  }
+
+  /* Дни небольшой докупки внутри недели.
+   *
+   * Всё, что нужно на неделю, в понедельник не купишь: молоко, творог и фарш
+   * до пятницы не доживут. Значит за ними идут отдельно, и это не прихоть
+   * приложения, а то, как люди и так делают. Считаем прямо: продукт нужен
+   * в такой-то день, а срок хранения короче, чем прошло с начала недели —
+   * до этого дня он не долежит, покупать надо ближе к готовке. */
+  function topUpDays(plan) {
+    const byId = S().productsById();
+    const perDay = {};
+
+    plan.days.forEach(function (day, di) {
+      day.meals.forEach(function (meal) {
+        if (!meal || !meal.recipe) return;
+        const mult = buyMult(meal);
+        if (mult <= 0) return;
+        meal.recipe.ing.forEach(function (i) {
+          const product = byId[i.p];
+          if (!product || !product.life) return;
+          if (product.life > di) return;           // до этого дня долежит
+          const bucket = perDay[di] || (perDay[di] = { day: di, date: day.date, items: [], cost: 0 });
+          bucket.items.push({ product: product, grams: i.g * mult });
+          bucket.cost += i.g * mult * S().pricePerBase(product);
+        });
+      });
+    });
+
+    return Object.keys(perDay).map(k => perDay[k])
+      .map(b => Object.assign(b, { cost: Math.round(b.cost) }))
+      .filter(b => b.cost >= 50)                   // ради полтинника отдельно не ходят
+      .sort((a, b) => a.day - b.day);
+  }
+
   window.App = window.App || {};
   window.App.shopping = {
+    monthSummary, topUpDays,
     aggregate, buildList, costOf, pantryAfter, buyMult, weighStep, roundUp, unitRates,
     formatAmount, formatMass, formatPurchase, groupByCategory
   };
@@ -5424,9 +5567,14 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     // одно блюдо подряд — и запрет только мешает.
     const allowBackToBack = settings.maxRepeat >= 4;
 
+    // Нелюбимое — почти запрет, а не понижение в очереди. Кастрюля одна,
+    // и человек, отметивший блюдо как нелюбимое, будет есть именно его.
+    const disliked = (ctx.tastes && ctx.tastes.dislikes) || {};
+
     let candidates = ctx.recipes.filter(function (r) {
       if (r.m.indexOf(slot) === -1) return false;
       if (sameDay.indexOf(r.id) !== -1) return false;
+      if (disliked[r.id]) return false;
       if ((usage[r.id] || 0) >= settings.maxRepeat) return false;
       if (!allowBackToBack && lastBySlot[slot] === r.id) return false;
       return true;
@@ -5435,6 +5583,12 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     // Если фильтры срезали всё (мало рецептов после исключений) — ослабляем их
     // по одному, начиная с наименее важного. Запрет на повтор внутри дня
     // снимается последним: он заметнее всего портит впечатление от меню.
+    if (!candidates.length) {
+      candidates = ctx.recipes.filter(r => r.m.indexOf(slot) !== -1 &&
+        sameDay.indexOf(r.id) === -1 && !disliked[r.id]);
+    }
+    // Запрет на нелюбимое снимается предпоследним — раньше, чем повтор внутри
+    // дня, но только когда выбирать больше не из чего. Пустой приём пищи хуже.
     if (!candidates.length) {
       candidates = ctx.recipes.filter(r => r.m.indexOf(slot) !== -1 && sameDay.indexOf(r.id) === -1);
     }
@@ -5467,6 +5621,20 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       score -= (costs[idx] / (medianCost || 1)) * (ctx.costFocus ? 12.0 : 5.0);
       score -= (usage[r.id] || 0) * (ctx.costFocus ? 0.4 : 1.5);   // на жёстком бюджете повторы допустимы
       if (r.t > 50) score -= 0.4;                          // долгие рецепты реже
+
+      /* Любимое ставится охотнее, и тем охотнее, чем больше едоков его любят.
+       *
+       * Вес выбран замером на 20 фиксированных посевах, два любимых блюда,
+       * бюджет 25 000. Без пометки они выпадали 7 раз за прогон. Вес 1,6 не
+       * менял ничего — 6 раз, то есть в пределах случайности; 2,5 давал 20 раз
+       * без единого рубля разницы в стоимости; 3,5 — 30 раз при +70 ₽ в неделю,
+       * и дальше кривая упирается: и 5, и 7 дают те же 30. Взят излом кривой.
+       *
+       * Дороже на 1,4% — это честная цена за то, что человек ест то, что любит,
+       * и она не размывает главного: калории и белок проверяются после подбора
+       * и от предпочтений не зависят. */
+      const loved = (ctx.tastes && ctx.tastes.likes[r.id]) || 0;
+      if (loved) score += Math.min(6, loved * 3.5);
 
       // Блюдо, которое под этот приём пищи приходится сжимать впятеро или
       // растягивать втрое, здесь не к месту: даже уложившись в границы,
@@ -5617,6 +5785,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       pantry: Object.assign({}, state.pantry),
       committed: {},                       // что уже оплачено упаковками и сколько из этого съедено
       slotTargets: slotTargets(state.people),
+      tastes: S().tastes(),
       usage: {},
       lastBySlot: {},
       settings: state.settings,
@@ -5807,7 +5976,8 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       const used = usageInPlan(plan);
       const better = ctx.recipes
         .filter(r => r.m.indexOf(worst.slot) !== -1 && r.id !== worst.recipe.id &&
-          busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < settings.maxRepeat)
+          busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < settings.maxRepeat &&
+          !(ctx.tastes && ctx.tastes.dislikes[r.id]))
         .map(function (r) {
           const nut = nutritionOfRecipe(ctx, r, byId);
           return { r: r, density: nut.total.p / Math.max(1, nut.total.kcal) };
@@ -6075,7 +6245,8 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
         const used = usageInPlan(plan);
         const alternatives = recipes
           .filter(r => r.m.indexOf(current.slot) !== -1 && r.id !== current.recipe.id &&
-            busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < ctx.settings.maxRepeat)
+            busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < ctx.settings.maxRepeat &&
+            !(ctx.tastes && ctx.tastes.dislikes[r.id]))
           .map(function (r) {
             const nut = nutritionOfRecipe(ctx, r, byId);
             return { r: r, perKcal: recipeCost(r, byId, 1) / Math.max(1, nut.total.kcal) };
@@ -7433,8 +7604,26 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     U().refresh();
   }
 
+  // Дни докупки считаются по всему плану, поэтому не на каждую клетку заново:
+  // тридцать клеток — это тридцать проходов по неделе на ровном месте.
+  let topUpCache = null;
+
+  function topUpAt(dateStr) {
+    if (!topUpCache) {
+      topUpCache = {};
+      const weeks = S().allWeeks();
+      Object.keys(weeks).forEach(function (start) {
+        window.App.shopping.topUpDays(weeks[start]).forEach(function (t) {
+          topUpCache[t.date] = t;
+        });
+      });
+    }
+    return topUpCache[dateStr] || null;
+  }
+
   function render() {
     const u = U(), h = u.h;
+    topUpCache = null;
     if (!shownMonth) shownMonth = monthStart(new Date());
 
     return h('div.view.cal-view', {}, [
@@ -7522,11 +7711,14 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     const isShopDay = S().weekStart(dateStr) === dateStr;
     const week = found ? found.plan : S().weekAt(S().weekStart(dateStr));
 
+    const topUp = found ? topUpAt(dateStr) : null;
+
     const classes = ['cal-cell'];
     if (isToday) classes.push('today');
     if (openDay === dateStr) classes.push('open');
     if (!found) classes.push('blank');
     if (isShopDay && week) classes.push('shop');
+    else if (topUp) classes.push('topup');
 
     const kids = [h('span.cal-num', { text: String(num) })];
 
@@ -7534,6 +7726,9 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       // Сумма на дне закупки — стоимость списка именно этой недели,
       // а не доля от месяца: в магазин идут с ней.
       kids.push(h('span.cal-shop', { text: u.money(week.cost || 0) }));
+    } else if (topUp) {
+      // Небольшая докупка: то, что до этого дня просто не долежит.
+      kids.push(h('span.cal-topup', { text: '+' + u.money(topUp.cost) }));
     }
 
     if (found) {
@@ -7574,7 +7769,8 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   function legend() {
     const u = U(), h = u.h;
     return h('div.cal-legend', {}, [
-      h('span', {}, [h('i.dot.shop'), 'день закупки и сумма на неё']),
+      h('span', {}, [h('i.dot.shop'), 'большая закупка на неделю']),
+      h('span', {}, [h('i.dot.topup'), 'докупить скоропорт']),
       h('span', {}, [h('i.dot.today'), 'сегодня']),
       h('span', {}, [h('i.dot.blank'), 'неделя ещё не собрана'])
     ]);
@@ -7729,7 +7925,17 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     const cost = P().dayCost(found.plan, found.day);
     const isShopDay = S().weekStart(found.day.date) === found.day.date;
 
+    const topUp = topUpAt(found.day.date);
+
     return h('div.day-foot', {}, [
+      topUp ? h('div.note', {}, [
+        h('p', { text: 'В этот день зайти за скоропортящимся — примерно на ' + u.money(topUp.cost) + ':' }),
+        h('ul.plain', {}, topUp.items.map(i =>
+          h('li', { text: i.product.n + ' — ' + window.App.shopping.formatAmount(i.product, i.grams) }))),
+        h('p.hint', { text: 'Эти продукты не долежат с большой закупки: срок хранения короче, ' +
+          'чем прошло дней с начала недели. Их стоимость уже входит в сумму недели, ' +
+          'это не сверх бюджета.' })
+      ]) : null,
       h('p.hint', { text: 'Еда этого дня обходится примерно в ' + u.money(cost) +
         '. Это доля от закупки на неделю, а не отдельный поход в магазин.' }),
       isShopDay
@@ -8349,6 +8555,57 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   const S = () => window.App.store;
   const SH = () => window.App.shopping;
 
+  /* Сводка по всему месяцу.
+   *
+   * Появляется, только когда собрана не одна неделя: на одной она повторяла бы
+   * недельный список слово в слово и лишь занимала место.
+   *
+   * Вес — то, ради чего это и нужно помимо суммы: «20 500 ₽» ничего не говорит
+   * о том, донесёшь ли ты это, а «102 кг за месяц» сразу объясняет, почему
+   * за один раз не выйдет. Считается по купленному весу, а не съедобному:
+   * кожуру от картошки тоже несут в руках. Миллилитры в вес не идут —
+   * складывать литры с килограммами приложение не станет. */
+  function monthCard() {
+    const u = U(), h = u.h;
+    const weeks = S().allWeeks();
+    const starts = Object.keys(weeks).sort();
+    if (starts.length < 2) return null;
+
+    const plans = starts.map(function (start) {
+      return { start: start, plan: weeks[start], label: weekLabel(start) };
+    });
+    const sum = SH().monthSummary(plans);
+
+    return u.card('Все закупки: ' + starts.length + ' нед.', [
+      h('div.big-figure.under', {}, [
+        h('span.big-num', { text: u.money(sum.cost) }),
+        h('span.big-cap', { text: 'и ' + sum.weightKg + ' кг нести из магазина' })
+      ]),
+      h('p.hint', { text: 'Это сумма отдельных закупок, а не одного похода: упаковки покупаются ' +
+        'в каждый заход заново, и складывать их в один список значило бы занизить сумму ' +
+        'на переплате за целые пачки.' }),
+      h('table.kv', {}, h('tbody', {}, sum.weeks.map(function (w) {
+        return h('tr', {}, [
+          h('td', { text: w.label }),
+          h('td.num', { text: u.money(w.list.total) })
+        ]);
+      }))),
+      h('h3', { text: 'Что покупается чаще всего' }),
+      h('ul.plain', {}, sum.items.slice(0, 10).map(function (i) {
+        return h('li', { text: i.product.n + ' — ' + SH().formatAmount(i.product, i.amount) +
+          ' на ' + u.money(i.cost) });
+      }))
+    ]);
+  }
+
+  /* Название списка человеческое: «неделя с 8 сентября», а не голая дата. */
+  function weekLabel(start) {
+    const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+    const d = new Date(start + 'T12:00:00');
+    return 'Неделя с ' + d.getDate() + ' ' + MONTHS[d.getMonth()];
+  }
+
   function render() {
     const u = U(), h = u.h;
     const state = S().get();
@@ -8365,6 +8622,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     const budget = S().weeklyBudget();
 
     return h('div.view', {}, [
+      monthCard(),
       summary(list, budget, plan),
       u.overspendCard(list.total),
       h('div.list-groups', {}, list.byCategory.map(group => groupCard(group))),
@@ -9526,9 +9784,25 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     const s = S().get().settings;
     const b = S().weeklyBudget();
 
+    const shared = S().contributions();
+    const fromPeople = !!s.budgetFromPeople && shared > 0;
+
     return u.card('Бюджет', [
+      /* Складывать вклады имеет смысл, только когда их кто-то указал.
+         Пока все нули, переключатель ничего не даст и лишь запутает — поэтому
+         он и не показывается. */
+      shared > 0 ? h('label.checkline', {}, [
+        h('input', {
+          type: 'checkbox', checked: !!s.budgetFromPeople,
+          onchange: function (e) { set('budgetFromPeople', e.target.checked); window.App.ui.refresh(); }
+        }),
+        h('span', { text: 'Считать бюджет суммой вкладов из профилей — ' + u.money(shared) })
+      ]) : null,
+      fromPeople ? h('p.hint', { text: 'Сумма ниже не используется, пока стоит эта галочка: ' +
+        'бюджет берётся из того, сколько каждый готов вложить.' }) : null,
       h('div.form-grid', {}, [
-        u.field('Сумма, ₽', u.numberInput(s.budget, v => { set('budget', v); window.App.ui.refresh(); }, { min: '0', step: '100' })),
+        u.field('Сумма, ₽', u.numberInput(s.budget, v => { set('budget', v); window.App.ui.refresh(); },
+          { min: '0', step: '100', disabled: fromPeople ? 'disabled' : null })),
         u.field('Период', u.select([
           { value: 'month', label: 'на месяц' },
           { value: 'week', label: 'на неделю' }
@@ -9567,6 +9841,66 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
         text: 'Суммарная норма на всех: ' + total.kcal + ' ккал, Б ' + total.p + ' · Ж ' + total.f + ' · У ' + total.c + ' в день. ' +
           'Именно под неё собирается меню.'
       })
+    ]);
+  }
+
+  /* Любимые и нелюбимые блюда.
+   *
+   * Хранятся у человека, а действуют на общее меню, и об этом сказано прямо:
+   * кастрюля одна, и если один отметил рыбу как нелюбимую, рыбы не будет
+   * ни у кого. Это следствие совместной готовки, а не недоработка, и человек
+   * должен понимать это до того, как отметит полкаталога.
+   *
+   * Список выбирается из настоящих рецептов, а не вводится текстом: свободный
+   * ввод пришлось бы угадывать, а угаданное «не то» раздражает сильнее,
+   * чем отсутствие возможности. */
+  function tastesBlock(person) {
+    const u = U(), h = u.h;
+    const recipes = S().allRecipes().slice().sort((a, b) => a.n.localeCompare(b.n, 'ru'));
+
+    function toggle(key, id) {
+      const list = (person[key] || []).slice();
+      const at = list.indexOf(id);
+      if (at === -1) {
+        list.push(id);
+        // В обоих списках сразу блюдо быть не может — это противоречие.
+        const other = key === 'likes' ? 'dislikes' : 'likes';
+        person[other] = (person[other] || []).filter(x => x !== id);
+      } else list.splice(at, 1);
+      person[key] = list;
+      S().save();
+      window.App.ui.refresh();
+    }
+
+    function chips(key, label, hint) {
+      const chosen = person[key] || [];
+      const picker = u.select(
+        [{ value: '', label: '— выбрать блюдо —' }]
+          .concat(recipes.filter(r => chosen.indexOf(r.id) === -1).map(r => ({ value: r.id, label: r.n }))),
+        '', function (v) { if (v) toggle(key, v); });
+
+      return h('div.taste-group', {}, [
+        h('span.field-label', { text: label }),
+        chosen.length
+          ? h('div.chips', {}, chosen.map(function (id) {
+              const r = recipes.find(x => x.id === id);
+              return h('button.chip', {
+                type: 'button', title: 'Убрать',
+                onclick: () => toggle(key, id),
+                text: (r ? r.n : id) + ' ✕'
+              });
+            }))
+          : h('span.hint', { text: hint }),
+        picker
+      ]);
+    }
+
+    return h('div.tastes', {}, [
+      chips('likes', 'Любимое', 'Пока ничего не отмечено'),
+      chips('dislikes', 'Нелюбимое', 'Пока ничего не отмечено'),
+      h('p.hint', { text: 'Готовится одна кастрюля, поэтому вкусы действуют на общее меню: ' +
+        'нелюбимое одним не попадёт в тарелку ни к кому, а любимое будет встречаться чаще. ' +
+        'Калории и белок при этом остаются в норме — они проверяются после подбора.' })
     ]);
   }
 
@@ -9631,6 +9965,10 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
         }))
       ]),
       dietsBlock(person),
+      tastesBlock(person),
+      u.field('Вкладывает в бюджет, ₽',
+        u.numberInput(person.contributes || 0, v => upd('contributes', v), { min: '0', step: '500' }),
+        'За тот же период, что и общий бюджет. Ноль — не указано.'),
       h('label.checkline', {}, [
         h('input', {
           type: 'checkbox', checked: manual,
@@ -10499,6 +10837,56 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     ]);
   }
 
+  /* Листание экранов пальцем.
+   *
+   * Просилось в календарном расположении, но включено везде: жест, который
+   * работает на одном экране и не работает на соседнем, раздражает сильнее,
+   * чем его отсутствие.
+   *
+   * Два условия отсеивают ложные срабатывания. Движение должно быть в основном
+   * горизонтальным — иначе обычная прокрутка страницы пальцем листала бы
+   * вкладки. И оно должно быть быстрым: медленное перетаскивание — это чаще
+   * всего попытка выделить текст или прокрутить широкую таблицу.
+   *
+   * Внутри того, что и само прокручивается вбок — таблиц, списка вкладок, —
+   * жест не перехватывается вовсе: там он уже занят. */
+  function setupSwipes() {
+    const main = document.getElementById('view');
+    if (!main || !('ontouchstart' in window)) return;
+
+    let x0 = 0, y0 = 0, t0 = 0, tracking = false;
+
+    main.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) { tracking = false; return; }
+      const t = e.touches[0];
+      // Внутри горизонтально прокручиваемого — не наше дело.
+      let node = e.target;
+      while (node && node !== main) {
+        if (node.scrollWidth > node.clientWidth + 4) { tracking = false; return; }
+        node = node.parentNode;
+      }
+      x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); tracking = true;
+    }, { passive: true });
+
+    main.addEventListener('touchend', function (e) {
+      if (!tracking) return;
+      tracking = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - x0, dy = t.clientY - y0, dt = Date.now() - t0;
+      if (dt > 600) return;                       // медленное — не жест
+      if (Math.abs(dx) < 60) return;              // короткое — не жест
+      if (Math.abs(dx) < Math.abs(dy) * 1.8) return;  // больше вертикали — прокрутка
+
+      const list = order().filter(n => window.App.views[n] &&
+        (n !== 'account' || (window.App.cloud && window.App.cloud.available())));
+      const at = list.indexOf(current);
+      if (at === -1) return;
+      const next = dx < 0 ? at + 1 : at - 1;
+      if (next < 0 || next >= list.length) return;
+      go(list[next]);
+    }, { passive: true });
+  }
+
   function init() {
     window.App.store.load();
 
@@ -10523,6 +10911,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       if (name && name !== current && window.App.views[name]) go(name);
     });
 
+    setupSwipes();
     setupAccount();
     setupSync();
 

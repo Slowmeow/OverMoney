@@ -1245,6 +1245,10 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .cal-cell.today { border-color: var(--accent); border-width: 2px; }
 .cal-cell.open { background: var(--surface-2); border-color: var(--accent); }
 .cal-cell.shop { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+/* Докупка — другим цветом, а не бледнее: это другое действие, а не «то же,
+   но поменьше». В большую закупку идут со списком, в докупку — за молоком. */
+.cal-cell.topup { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); }
+.cal-topup { font-size: 0.62rem; color: var(--warn); font-weight: var(--weight-bold); line-height: 1; }
 
 .cal-num { font-weight: var(--weight-bold); font-size: var(--text-sm); line-height: 1.1; }
 .cal-shop { font-size: 0.62rem; color: var(--accent); font-weight: var(--weight-bold); line-height: 1; }
@@ -1258,6 +1262,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 .cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .dot.shop { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
+.dot.topup { background: color-mix(in srgb, var(--warn) 55%, var(--surface)); }
 .dot.today { border: 2px solid var(--accent); }
 .dot.blank { border: 1px dashed var(--line); }
 
@@ -1303,6 +1308,23 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   .cal-kcal { display: none; }        /* на узких экранах числу дня нужнее место */
   .eater-face { width: 40px; height: 40px; }
 }
+
+/* ---- вкусы: любимое и нелюбимое ---- */
+
+.tastes { display: grid; gap: var(--space-5); margin: var(--space-5) 0; }
+.taste-group { display: grid; gap: var(--space-3); }
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.chip {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: 3px var(--space-4);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+.chip:hover { border-color: var(--bad); color: var(--bad); }
 
 /* ================= сроки годности ================= */
 

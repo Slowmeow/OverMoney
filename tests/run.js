@@ -346,6 +346,133 @@ ok('компромисс обратим', !!hardPlan.beforeHardFit);
 planner.undoHardFit(hardPlan);
 ok('откат возвращает исходный план', hardPlan.cost === before, hardPlan.cost + ' ₽');
 
+// ───────────────────────────────────────────────── вкусы и вклады
+
+section('Любимое, нелюбимое и вклад в бюджет');
+
+{
+  const st = store.get();
+  st.settings.startDay = '2026-09-07';
+  st.settings.budget = 25000;
+  const HATED = ['cheburek', 'pancakes', 'draniki'];
+  const LOVED = ['ukha', 'tvorog_honey'];
+
+  // Точка отсчёта: сколько этих блюд выпадает само по себе.
+  st.people.forEach(p => { p.likes = []; p.dislikes = []; });
+  store.persist();
+  let baseHated = 0, baseLoved = 0;
+  for (let seed = 1; seed <= 15; seed++) {
+    const p = withSeed(seed, () => planner.generate());
+    planner.allMeals(p).forEach(function (m) {
+      if (!m.recipe) return;
+      if (HATED.indexOf(m.recipe.id) !== -1) baseHated++;
+      if (LOVED.indexOf(m.recipe.id) !== -1) baseLoved++;
+    });
+  }
+
+  st.people[0].dislikes = HATED.slice();
+  st.people.forEach(p => { p.likes = LOVED.slice(); });
+  store.persist();
+  let hated = 0, loved = 0, protein = 1, kcalOff = 0;
+  for (let seed = 1; seed <= 15; seed++) {
+    const p = withSeed(seed, () => planner.generate());
+    protein = Math.min(protein, p.nutrition.week.p / p.targets.week.p);
+    kcalOff = Math.max(kcalOff, Math.abs(p.nutrition.week.kcal / p.targets.week.kcal - 1));
+    planner.allMeals(p).forEach(function (m) {
+      if (!m.recipe) return;
+      if (HATED.indexOf(m.recipe.id) !== -1) hated++;
+      if (LOVED.indexOf(m.recipe.id) !== -1) loved++;
+    });
+  }
+
+  ok('нелюбимое не попадает в меню', hated === 0,
+    'без пометки выпадало ' + baseHated + ' раз, с пометкой ' + hated);
+  ok('любимое встречается заметно чаще', loved > baseLoved * 1.5,
+    baseLoved + ' раз без пометки → ' + loved + ' с пометкой');
+  ok('вкусы не ломают норму белка', protein >= st.settings.proteinFloor - 0.001,
+    'худший прогон ' + Math.round(protein * 100) + '%');
+  ok('вкусы не ломают калории', kcalOff <= st.settings.kcalTolerance,
+    'худшее отклонение ' + (kcalOff * 100).toFixed(1) + '%');
+
+  // Нелюбимое у одного действует на всех: кастрюля одна.
+  st.people[0].dislikes = HATED.slice();
+  st.people[1].dislikes = [];
+  st.people[1].likes = HATED.slice();      // второй их как раз любит
+  store.persist();
+  let stillHated = 0;
+  for (let seed = 20; seed <= 30; seed++) {
+    const p = withSeed(seed, () => planner.generate());
+    planner.allMeals(p).forEach(m => { if (m.recipe && HATED.indexOf(m.recipe.id) !== -1) stillHated++; });
+  }
+  ok('запрет одного сильнее желания другого', stillHated === 0,
+    'один отметил нелюбимым, второй любимым — блюда нет, потому что кастрюля общая');
+
+  st.people.forEach(p => { p.likes = []; p.dislikes = []; });
+  store.persist();
+}
+
+{
+  const st = store.get();
+  st.people[0].contributes = 18000;
+  st.people[1].contributes = 12000;
+  st.settings.budget = 25000;
+  st.settings.budgetFromPeople = false;
+  store.persist();
+  ok('вклады складываются', store.contributions() === 30000, store.contributions() + ' ₽');
+  ok('пока галочка снята, берётся общая сумма', store.budgetAmount() === 25000);
+  st.settings.budgetFromPeople = true;
+  store.persist();
+  ok('с галочкой бюджет считается по вкладам', store.budgetAmount() === 30000);
+  ok('недельный бюджет пересчитан от вкладов',
+    near(store.weeklyBudget().gross, 30000 / st.settings.weeksInMonth, 0.01),
+    Math.round(store.weeklyBudget().gross) + ' ₽ в неделю');
+  st.settings.budgetFromPeople = false;
+  st.people.forEach(p => { p.contributes = 0; });
+  store.persist();
+}
+
+// ───────────────────────────────────────────────── закупки за месяц
+
+section('Закупки за месяц и дни докупки');
+
+{
+  const st = store.get();
+  st.settings.startDay = '2026-09-07';
+  store.persist();
+  const w1 = withSeed(1, () => planner.generate());
+  st.plan = w1;
+  store.persist();
+
+  const entries = [{ start: '2026-09-07', plan: w1, label: 'Неделя 1' }];
+  ['2026-09-14', '2026-09-21'].forEach(function (d, i) {
+    const p = withSeed(i + 2, () => planner.generate({ startDay: d }));
+    store.setWeek(d, p);
+    entries.push({ start: d, plan: p, label: 'Неделя ' + (i + 2) });
+  });
+
+  const sum = shopping.monthSummary(entries);
+  ok('сводка складывает все недели', sum.weeks.length === 3, sum.weeks.length + ' недели');
+  ok('итог равен сумме недельных списков',
+    sum.cost === entries.reduce((a, e) => a + shopping.buildList(e.plan).total, 0),
+    sum.cost + ' ₽');
+  ok('вес посчитан и правдоподобен', sum.weightKg > 10 && sum.weightKg < 400,
+    sum.weightKg + ' кг нести из магазина');
+  ok('позиции объединены по продуктам',
+    sum.items.length > 0 && sum.items.length <= shopping.buildList(w1).items.length * 3,
+    sum.items.length + ' позиций');
+  ok('позиции отсортированы по деньгам',
+    sum.items.every((it, i, all) => i === 0 || all[i - 1].cost >= it.cost));
+
+  const tops = shopping.topUpDays(w1);
+  ok('дни докупки не в первый день недели', tops.every(t => t.day > 0),
+    tops.length ? 'дни ' + tops.map(t => t.day + 1).join(', ') : 'докупок нет');
+  ok('в докупку попадает только скоропорт',
+    tops.every(t => t.items.every(i => i.product.life <= t.day)),
+    tops.length ? 'проверено позиций: ' + tops.reduce((n, t) => n + t.items.length, 0) : '—');
+  ok('мелочь ниже полтинника в докупку не выносится',
+    tops.every(t => t.cost >= 50));
+}
+
 // ───────────────────────────────────────────────── сроки годности
 
 section('Сроки годности в кладовой');

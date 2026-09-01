@@ -65,9 +65,25 @@
     const s = S().get().settings;
     const b = S().weeklyBudget();
 
+    const shared = S().contributions();
+    const fromPeople = !!s.budgetFromPeople && shared > 0;
+
     return u.card('Бюджет', [
+      /* Складывать вклады имеет смысл, только когда их кто-то указал.
+         Пока все нули, переключатель ничего не даст и лишь запутает — поэтому
+         он и не показывается. */
+      shared > 0 ? h('label.checkline', {}, [
+        h('input', {
+          type: 'checkbox', checked: !!s.budgetFromPeople,
+          onchange: function (e) { set('budgetFromPeople', e.target.checked); window.App.ui.refresh(); }
+        }),
+        h('span', { text: 'Считать бюджет суммой вкладов из профилей — ' + u.money(shared) })
+      ]) : null,
+      fromPeople ? h('p.hint', { text: 'Сумма ниже не используется, пока стоит эта галочка: ' +
+        'бюджет берётся из того, сколько каждый готов вложить.' }) : null,
       h('div.form-grid', {}, [
-        u.field('Сумма, ₽', u.numberInput(s.budget, v => { set('budget', v); window.App.ui.refresh(); }, { min: '0', step: '100' })),
+        u.field('Сумма, ₽', u.numberInput(s.budget, v => { set('budget', v); window.App.ui.refresh(); },
+          { min: '0', step: '100', disabled: fromPeople ? 'disabled' : null })),
         u.field('Период', u.select([
           { value: 'month', label: 'на месяц' },
           { value: 'week', label: 'на неделю' }
@@ -106,6 +122,66 @@
         text: 'Суммарная норма на всех: ' + total.kcal + ' ккал, Б ' + total.p + ' · Ж ' + total.f + ' · У ' + total.c + ' в день. ' +
           'Именно под неё собирается меню.'
       })
+    ]);
+  }
+
+  /* Любимые и нелюбимые блюда.
+   *
+   * Хранятся у человека, а действуют на общее меню, и об этом сказано прямо:
+   * кастрюля одна, и если один отметил рыбу как нелюбимую, рыбы не будет
+   * ни у кого. Это следствие совместной готовки, а не недоработка, и человек
+   * должен понимать это до того, как отметит полкаталога.
+   *
+   * Список выбирается из настоящих рецептов, а не вводится текстом: свободный
+   * ввод пришлось бы угадывать, а угаданное «не то» раздражает сильнее,
+   * чем отсутствие возможности. */
+  function tastesBlock(person) {
+    const u = U(), h = u.h;
+    const recipes = S().allRecipes().slice().sort((a, b) => a.n.localeCompare(b.n, 'ru'));
+
+    function toggle(key, id) {
+      const list = (person[key] || []).slice();
+      const at = list.indexOf(id);
+      if (at === -1) {
+        list.push(id);
+        // В обоих списках сразу блюдо быть не может — это противоречие.
+        const other = key === 'likes' ? 'dislikes' : 'likes';
+        person[other] = (person[other] || []).filter(x => x !== id);
+      } else list.splice(at, 1);
+      person[key] = list;
+      S().save();
+      window.App.ui.refresh();
+    }
+
+    function chips(key, label, hint) {
+      const chosen = person[key] || [];
+      const picker = u.select(
+        [{ value: '', label: '— выбрать блюдо —' }]
+          .concat(recipes.filter(r => chosen.indexOf(r.id) === -1).map(r => ({ value: r.id, label: r.n }))),
+        '', function (v) { if (v) toggle(key, v); });
+
+      return h('div.taste-group', {}, [
+        h('span.field-label', { text: label }),
+        chosen.length
+          ? h('div.chips', {}, chosen.map(function (id) {
+              const r = recipes.find(x => x.id === id);
+              return h('button.chip', {
+                type: 'button', title: 'Убрать',
+                onclick: () => toggle(key, id),
+                text: (r ? r.n : id) + ' ✕'
+              });
+            }))
+          : h('span.hint', { text: hint }),
+        picker
+      ]);
+    }
+
+    return h('div.tastes', {}, [
+      chips('likes', 'Любимое', 'Пока ничего не отмечено'),
+      chips('dislikes', 'Нелюбимое', 'Пока ничего не отмечено'),
+      h('p.hint', { text: 'Готовится одна кастрюля, поэтому вкусы действуют на общее меню: ' +
+        'нелюбимое одним не попадёт в тарелку ни к кому, а любимое будет встречаться чаще. ' +
+        'Калории и белок при этом остаются в норме — они проверяются после подбора.' })
     ]);
   }
 
@@ -170,6 +246,10 @@
         }))
       ]),
       dietsBlock(person),
+      tastesBlock(person),
+      u.field('Вкладывает в бюджет, ₽',
+        u.numberInput(person.contributes || 0, v => upd('contributes', v), { min: '0', step: '500' }),
+        'За тот же период, что и общий бюджет. Ноль — не указано.'),
       h('label.checkline', {}, [
         h('input', {
           type: 'checkbox', checked: manual,

@@ -425,9 +425,14 @@
     // одно блюдо подряд — и запрет только мешает.
     const allowBackToBack = settings.maxRepeat >= 4;
 
+    // Нелюбимое — почти запрет, а не понижение в очереди. Кастрюля одна,
+    // и человек, отметивший блюдо как нелюбимое, будет есть именно его.
+    const disliked = (ctx.tastes && ctx.tastes.dislikes) || {};
+
     let candidates = ctx.recipes.filter(function (r) {
       if (r.m.indexOf(slot) === -1) return false;
       if (sameDay.indexOf(r.id) !== -1) return false;
+      if (disliked[r.id]) return false;
       if ((usage[r.id] || 0) >= settings.maxRepeat) return false;
       if (!allowBackToBack && lastBySlot[slot] === r.id) return false;
       return true;
@@ -436,6 +441,12 @@
     // Если фильтры срезали всё (мало рецептов после исключений) — ослабляем их
     // по одному, начиная с наименее важного. Запрет на повтор внутри дня
     // снимается последним: он заметнее всего портит впечатление от меню.
+    if (!candidates.length) {
+      candidates = ctx.recipes.filter(r => r.m.indexOf(slot) !== -1 &&
+        sameDay.indexOf(r.id) === -1 && !disliked[r.id]);
+    }
+    // Запрет на нелюбимое снимается предпоследним — раньше, чем повтор внутри
+    // дня, но только когда выбирать больше не из чего. Пустой приём пищи хуже.
     if (!candidates.length) {
       candidates = ctx.recipes.filter(r => r.m.indexOf(slot) !== -1 && sameDay.indexOf(r.id) === -1);
     }
@@ -468,6 +479,20 @@
       score -= (costs[idx] / (medianCost || 1)) * (ctx.costFocus ? 12.0 : 5.0);
       score -= (usage[r.id] || 0) * (ctx.costFocus ? 0.4 : 1.5);   // на жёстком бюджете повторы допустимы
       if (r.t > 50) score -= 0.4;                          // долгие рецепты реже
+
+      /* Любимое ставится охотнее, и тем охотнее, чем больше едоков его любят.
+       *
+       * Вес выбран замером на 20 фиксированных посевах, два любимых блюда,
+       * бюджет 25 000. Без пометки они выпадали 7 раз за прогон. Вес 1,6 не
+       * менял ничего — 6 раз, то есть в пределах случайности; 2,5 давал 20 раз
+       * без единого рубля разницы в стоимости; 3,5 — 30 раз при +70 ₽ в неделю,
+       * и дальше кривая упирается: и 5, и 7 дают те же 30. Взят излом кривой.
+       *
+       * Дороже на 1,4% — это честная цена за то, что человек ест то, что любит,
+       * и она не размывает главного: калории и белок проверяются после подбора
+       * и от предпочтений не зависят. */
+      const loved = (ctx.tastes && ctx.tastes.likes[r.id]) || 0;
+      if (loved) score += Math.min(6, loved * 3.5);
 
       // Блюдо, которое под этот приём пищи приходится сжимать впятеро или
       // растягивать втрое, здесь не к месту: даже уложившись в границы,
@@ -618,6 +643,7 @@
       pantry: Object.assign({}, state.pantry),
       committed: {},                       // что уже оплачено упаковками и сколько из этого съедено
       slotTargets: slotTargets(state.people),
+      tastes: S().tastes(),
       usage: {},
       lastBySlot: {},
       settings: state.settings,
@@ -808,7 +834,8 @@
       const used = usageInPlan(plan);
       const better = ctx.recipes
         .filter(r => r.m.indexOf(worst.slot) !== -1 && r.id !== worst.recipe.id &&
-          busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < settings.maxRepeat)
+          busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < settings.maxRepeat &&
+          !(ctx.tastes && ctx.tastes.dislikes[r.id]))
         .map(function (r) {
           const nut = nutritionOfRecipe(ctx, r, byId);
           return { r: r, density: nut.total.p / Math.max(1, nut.total.kcal) };
@@ -1076,7 +1103,8 @@
         const used = usageInPlan(plan);
         const alternatives = recipes
           .filter(r => r.m.indexOf(current.slot) !== -1 && r.id !== current.recipe.id &&
-            busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < ctx.settings.maxRepeat)
+            busyToday.indexOf(r.id) === -1 && (used[r.id] || 0) < ctx.settings.maxRepeat &&
+            !(ctx.tastes && ctx.tastes.dislikes[r.id]))
           .map(function (r) {
             const nut = nutritionOfRecipe(ctx, r, byId);
             return { r: r, perKcal: recipeCost(r, byId, 1) / Math.max(1, nut.total.kcal) };

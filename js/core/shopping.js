@@ -204,8 +204,87 @@
     return n + ' × ' + p.pl;
   }
 
+  /* Сводка по нескольким неделям: что всего купить за месяц, почём и сколько
+   * это весит.
+   *
+   * Вес считается по-настоящему полезным: сколько килограммов придётся
+   * донести из магазина. Поэтому складывается купленный вес, а не съедобный —
+   * кожуру тоже несут в руках. Штучное без массы (туалетная бумага, губки)
+   * в вес не идёт: сложить рулоны с граммами нельзя.
+   *
+   * Недели складываются как отдельные закупки, а не как одна большая. Это
+   * не приближение, а правда: упаковки покупаются в каждый поход заново,
+   * и объединять их в один список значило бы занизить сумму на переплате
+   * за целые пачки — ровно на той ошибке, из-за которой считаем по упаковкам. */
+  function monthSummary(plans) {
+    const totals = {};
+    let cost = 0, weight = 0;
+    const weeks = [];
+
+    plans.forEach(function (entry) {
+      const list = buildList(entry.plan);
+      cost += list.total;
+      list.items.forEach(function (it) {
+        if (it.buyAmount <= 0) return;
+        const id = it.product.id;
+        const acc = totals[id] || (totals[id] = { product: it.product, amount: 0, cost: 0, packs: 0 });
+        acc.amount += it.buyAmount;
+        acc.cost += it.cost;
+        acc.packs += it.packs;
+        // Вес имеет смысл только там, где базовая единица — грамм.
+        if (it.product.unit !== 'ml' && it.product.pack >= 50) weight += it.buyAmount;
+      });
+      weeks.push({ start: entry.start, plan: entry.plan, list: list, label: entry.label });
+    });
+
+    const items = Object.keys(totals).map(k => totals[k]).sort((a, b) => b.cost - a.cost);
+    return {
+      items: items,
+      cost: Math.round(cost),
+      weightKg: Math.round(weight / 100) / 10,
+      weeks: weeks,
+      byCategory: groupByCategory(items.map(i => ({
+        product: i.product, cost: i.cost, buyAmount: i.amount, packs: i.packs
+      })))
+    };
+  }
+
+  /* Дни небольшой докупки внутри недели.
+   *
+   * Всё, что нужно на неделю, в понедельник не купишь: молоко, творог и фарш
+   * до пятницы не доживут. Значит за ними идут отдельно, и это не прихоть
+   * приложения, а то, как люди и так делают. Считаем прямо: продукт нужен
+   * в такой-то день, а срок хранения короче, чем прошло с начала недели —
+   * до этого дня он не долежит, покупать надо ближе к готовке. */
+  function topUpDays(plan) {
+    const byId = S().productsById();
+    const perDay = {};
+
+    plan.days.forEach(function (day, di) {
+      day.meals.forEach(function (meal) {
+        if (!meal || !meal.recipe) return;
+        const mult = buyMult(meal);
+        if (mult <= 0) return;
+        meal.recipe.ing.forEach(function (i) {
+          const product = byId[i.p];
+          if (!product || !product.life) return;
+          if (product.life > di) return;           // до этого дня долежит
+          const bucket = perDay[di] || (perDay[di] = { day: di, date: day.date, items: [], cost: 0 });
+          bucket.items.push({ product: product, grams: i.g * mult });
+          bucket.cost += i.g * mult * S().pricePerBase(product);
+        });
+      });
+    });
+
+    return Object.keys(perDay).map(k => perDay[k])
+      .map(b => Object.assign(b, { cost: Math.round(b.cost) }))
+      .filter(b => b.cost >= 50)                   // ради полтинника отдельно не ходят
+      .sort((a, b) => a.day - b.day);
+  }
+
   window.App = window.App || {};
   window.App.shopping = {
+    monthSummary, topUpDays,
     aggregate, buildList, costOf, pantryAfter, buyMult, weighStep, roundUp, unitRates,
     formatAmount, formatMass, formatPurchase, groupByCategory
   };
