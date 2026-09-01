@@ -562,12 +562,14 @@
     };
   }
 
-  function buildSkeleton(settings, people) {
+  function buildSkeleton(settings, people, startDay) {
     const daily = N().householdTargets(people);
     const targets = slotTargets(people);
     // Порядок приёмов пищи — как в течение дня, а не как пришлось в объекте.
     const slots = Object.keys(window.App.MEALS).filter(s => targets[s]);
-    const start = new Date((settings.startDay || S().today()) + 'T00:00:00');
+    // Дата начала может прийти извне: месячный календарь собирает несколько
+    // недель подряд, и каждой нужна своя, а не одна из настроек.
+    const start = new Date((startDay || settings.startDay || S().today()) + 'T00:00:00');
 
     const days = [];
     for (let d = 0; d < 7; d++) {
@@ -656,7 +658,7 @@
     // сдвигается к дешёвым калориям. Включается только жёсткой подгонкой.
     ctx.costFocus = !!(opts && opts.costFocus);
 
-    const plan = buildSkeleton(settings, state.people);
+    const plan = buildSkeleton(settings, state.people, opts && opts.startDay);
 
     plan.days.forEach(function (day, di) {
       day.meals.forEach(function (meal) {

@@ -4,9 +4,16 @@
 
   /* Показывается в подвале. Если после обновления цифра не изменилась —
      браузер отдал страницу из кеша, и правок вы не увидите. */
-  const APP_VERSION = '1.8';
+  const APP_VERSION = '1.9';
 
-  const ORDER = ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings', 'account'];
+  // Набор и порядок вкладок задаёт выбранное расположение экранов:
+  // «Вкладки» и «Календарь» — это два разных взгляда на одни данные.
+  function order() {
+    return window.App.layout ? window.App.layout.order() : ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings'];
+  }
+  function home() {
+    return window.App.layout ? window.App.layout.home() : 'dashboard';
+  }
   let current = 'dashboard';
 
   /* Пока человек не вошёл и не согласился смотреть гостем, всё приложение —
@@ -19,7 +26,7 @@
 
   function go(name) {
     if (locked()) name = 'account';
-    current = window.App.views[name] ? name : 'dashboard';
+    current = window.App.views[name] ? name : home();
     location.hash = current;
     refresh();
     window.scrollTo(0, 0);
@@ -27,6 +34,10 @@
 
   function refresh() {
     if (locked()) current = 'account';
+    // Экран мог остаться от прежнего расположения, где его больше нет.
+    if (!window.App.views[current] || order().indexOf(current) === -1) {
+      if (!locked()) current = home();
+    }
     const view = window.App.views[current];
     const root = document.getElementById('view');
     root.innerHTML = '';
@@ -50,7 +61,7 @@
     // На экране входа вкладок нет: показывать их значило бы предлагать
     // заглянуть в данные, которых человеку ещё не полагается видеть.
     if (locked()) return;
-    ORDER.forEach(function (name) {
+    order().forEach(function (name) {
       const view = window.App.views[name];
       if (!view) return;
       // Вкладка аккаунта появляется, только если облако вообще настроено.
@@ -221,9 +232,13 @@
     window.App.ui.go = go;
     window.App.ui.refresh = refresh;
     window.App.ui.generate = generate;
+    window.App.ui.setLayout = function (id) {
+      window.App.layout.set(id);
+      go(window.App.layout.home());
+    };
 
     const fromHash = location.hash.replace('#', '');
-    current = window.App.views[fromHash] ? fromHash : 'dashboard';
+    current = window.App.views[fromHash] ? fromHash : home();
     if (locked()) current = 'account';
 
     refresh();

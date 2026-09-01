@@ -1209,6 +1209,161 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   margin: var(--space-6) 0 var(--space-5);
 }
 
+/* ================= выбор расположения экранов ================= */
+
+.layout-pick { display: grid; gap: var(--space-3); }
+
+.layout-option {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.layout-option:hover { border-color: var(--accent); }
+.layout-option.active { border-color: var(--accent); background: var(--surface-2); }
+.layout-name { font-weight: var(--weight-bold); }
+.layout-short { font-size: var(--text-sm); }
+.layout-why { font-size: var(--text-sm); color: var(--muted); }
+
+/* ================= календарь ================= */
+
+/* Кружочки едоков. Переключают взгляд, а не меню: готовится одна кастрюля. */
+.eaters {
+  display: flex;
+  gap: var(--space-4);
+  overflow-x: auto;
+  padding: var(--space-2) 0 var(--space-4);
+}
+.eater {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  flex: 0 0 auto;
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease);
+}
+.eater.active { opacity: 1; }
+.eater-face {
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  border: 2px solid transparent;
+  font-size: 1.15rem;
+  font-weight: var(--weight-bold);
+}
+.eater.active .eater-face { border-color: var(--accent); background: var(--surface); }
+.eater-name { font-size: var(--text-sm); white-space: nowrap; }
+
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.cal-title { margin: 0; font-size: var(--text-lg); }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin: var(--space-4) 0;
+}
+.cal-wd {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  padding-bottom: 2px;
+}
+
+/* Клетка дня. Пропорция задана через aspect-ratio, а не высотой: на узких
+   телефонах фиксированная высота либо режет содержимое, либо оставляет дыры. */
+.cal-cell {
+  aspect-ratio: 1 / 1.15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  min-width: 0;
+}
+.cal-cell.empty { border: 0; background: none; cursor: default; }
+.cal-cell.blank { opacity: 0.45; border-style: dashed; }
+.cal-cell.today { border-color: var(--accent); border-width: 2px; }
+.cal-cell.open { background: var(--surface-2); border-color: var(--accent); }
+.cal-cell.shop { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+
+.cal-num { font-weight: var(--weight-bold); font-size: var(--text-sm); line-height: 1.1; }
+.cal-shop { font-size: 0.62rem; color: var(--accent); font-weight: var(--weight-bold); line-height: 1; }
+.cal-meals { display: flex; gap: 1px; font-size: 0.62rem; line-height: 1; }
+.cal-kcal { font-size: 0.58rem; color: var(--muted); line-height: 1; margin-top: auto; }
+
+.cal-legend {
+  display: flex; flex-wrap: wrap; gap: var(--space-4);
+  font-size: var(--text-sm); color: var(--muted);
+}
+.cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.dot.shop { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
+.dot.today { border: 2px solid var(--accent); }
+.dot.blank { border: 1px dashed var(--line); }
+
+/* ---- раскрытый день ---- */
+
+.meal-row { border-bottom: 1px solid var(--line); }
+.meal-row:last-of-type { border-bottom: 0; }
+
+.meal-head {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.meal-slot { font-size: 1.2rem; line-height: 1.3; flex: 0 0 auto; }
+.meal-main { display: grid; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.meal-name { font-weight: var(--weight-medium); }
+.meal-nut { font-size: var(--text-sm); color: var(--muted); }
+.meal-who { font-size: var(--text-sm); color: var(--muted); }
+.meal-eaters { display: flex; gap: 3px; flex: 0 0 auto; }
+.eater-mini {
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  font-size: 0.68rem;
+  font-weight: var(--weight-bold);
+  opacity: 0.5;
+}
+.eater-mini.on { opacity: 1; background: var(--accent); color: var(--bg); }
+
+.meal-detail { padding: 0 0 var(--space-4) calc(1.2rem + var(--space-3)); }
+.day-foot { padding-top: var(--space-4); }
+
+@media (max-width: 380px) {
+  .cal-kcal { display: none; }        /* на узких экранах числу дня нужнее место */
+  .eater-face { width: 40px; height: 40px; }
+}
+
 /* ================= печать ================= */
 
 @media print {
@@ -3111,7 +3266,11 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       customProducts: [],
       customRecipes: [],
       disabledRecipes: {},
-      plan: null,
+      plan: null,          // текущая неделя
+      weeks: {},           // прочие недели: { 'ГГГГ-ММ-ДД начала': план } — для месячного календаря
+      // Когда продукт попал в кладовую. Нужно, чтобы считать срок годности:
+      // у каждого продукта в каталоге есть поле life, а точки отсчёта не было.
+      pantryDates: {},     // { productId: 'ГГГГ-ММ-ДД' }
       listState: {},       // отметки «куплено» в списке покупок
       history: []
     };
@@ -3291,6 +3450,15 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
       .filter(r => Array.isArray(r.ing) && Array.isArray(r.m));
     merged.disabledRecipes = asObject(saved.disabledRecipes, {});
     merged.listState = asObject(saved.listState, {});
+    merged.pantryDates = asObject(saved.pantryDates, {});
+    // Каждая неделя проверяется тем же разбором, что и текущий план:
+    // битая неделя из месяца не должна валить календарь целиком.
+    merged.weeks = {};
+    const savedWeeks = asObject(saved.weeks, {});
+    Object.keys(savedWeeks).forEach(function (k) {
+      const p = sanePlan(asObject(savedWeeks[k], null));
+      if (p) merged.weeks[k] = p;
+    });
     merged.history = asRecords(saved.history, []);
     merged.plan = sanePlan(asObject(saved.plan, null));
 
@@ -3407,6 +3575,98 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
    * Внешне это выглядит так, будто кнопка не работает. */
   function plan() {
     return get().plan;
+  }
+
+  // ---------- НЕСКОЛЬКО НЕДЕЛЬ ----------
+
+  /* Месячный календарь показывает то, что движок считает недельными планами.
+   *
+   * Планировщик умеет ровно семь дней, и это не ограничение, а свойство задачи:
+   * закупка, кладовая и подгонка под бюджет живут неделей. Поэтому месяц
+   * не пересчитывается заново, а склеивается из недель — каждая собрана тем же
+   * проверенным кодом.
+   *
+   * Текущая неделя по-прежнему лежит в state.plan и ничем не отличается
+   * от прежней: весь старый код работает с ней, не подозревая об остальных.
+   * Прочие недели живут в state.weeks. Хранить текущую ещё и там значило бы
+   * держать две её копии, которые после сохранения и загрузки перестанут быть
+   * одним объектом и разойдутся при первой же правке. */
+  /* Начало недели, которой принадлежит эта дата.
+   *
+   * Отсчёт идёт не от понедельника, а от дня, с которого начат текущий план.
+   * Это не педантизм: человек начинает неделю тогда, когда ходит в магазин,
+   * и если план собран со среды, то его недели — среда-вторник. Привяжись
+   * расчёт к понедельнику, собранный план не совпал бы ни с одной клеткой
+   * календаря, и месяц выглядел бы пустым при полностью готовой неделе.
+   * Ровно так и получилось при первой сборке. */
+  function planStart(p) {
+    return p && p.days && p.days[0] ? p.days[0].date : null;
+  }
+
+  function weekAnchor() {
+    const s = get();
+    return planStart(s.plan) || s.settings.startDay || today();
+  }
+
+  function weekStart(dateStr) {
+    const anchor = new Date(weekAnchor() + 'T00:00:00');
+    const d = new Date((dateStr || today()) + 'T00:00:00');
+    const days = Math.floor((d - anchor) / 86400000);
+    // Math.floor, а не деление с усечением: до якоря разница отрицательная,
+    // и усечение к нулю сдвинуло бы прошлые недели на одну вперёд.
+    const shift = Math.floor(days / 7) * 7;
+    anchor.setDate(anchor.getDate() + shift);
+    return localDate(anchor);
+  }
+
+  /* План недели, начинающейся в этот день. Текущая неделя отдаётся из state.plan,
+     чтобы календарь и вкладки правили один и тот же объект, а не две копии. */
+  function weekAt(startDate) {
+    const s = get();
+    if (planStart(s.plan) === startDate) return s.plan;
+    return (s.weeks && s.weeks[startDate]) || null;
+  }
+
+  function setWeek(startDate, p) {
+    const s = get();
+    if (planStart(s.plan) === startDate) { s.plan = p; save(); return p; }
+    s.weeks = s.weeks || {};
+    s.weeks[startDate] = p;
+    save();
+    return p;
+  }
+
+  /* Все известные недели разом — для месячной сетки. */
+  function allWeeks() {
+    const s = get();
+    const out = {};
+    Object.keys(s.weeks || {}).forEach(k => { out[k] = s.weeks[k]; });
+    const cur = planStart(s.plan);
+    if (cur) out[cur] = s.plan;
+    return out;
+  }
+
+  /* День месяца → что в этот день едят. Возвращает и сам день, и неделю,
+     которой он принадлежит: без недели нельзя посчитать ни стоимость,
+     ни порции — они считаются по всему плану целиком. */
+  function dayAt(dateStr) {
+    const p = weekAt(weekStart(dateStr));
+    if (!p) return null;
+    const day = p.days.find(d => d.date === dateStr);
+    return day ? { day: day, plan: p } : null;
+  }
+
+  /* Забыть недели, которые давно прошли: они не нужны ни в календаре,
+     ни в отчётах, а место в хранилище занимают заметное. */
+  function pruneWeeks(keepFromDate) {
+    const s = get();
+    if (!s.weeks) return 0;
+    const edge = keepFromDate || weekStart(localDate(new Date(Date.now() - 60 * 86400000)));
+    let dropped = 0;
+    Object.keys(s.weeks).forEach(function (k) {
+      if (k < edge) { delete s.weeks[k]; dropped++; }
+    });
+    return dropped;
   }
 
   /* Приём пищи по дню и типу. Ссылку на сам приём хранить нельзя
@@ -3734,6 +3994,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   window.App = window.App || {};
   window.App.store = {
     load, save, get, reset, today, localDate, adopt, persist, plan, mealAt, storageAvailable,
+    weekStart, weekAt, setWeek, allWeeks, dayAt, pruneWeeks, planStart,
     revision: () => revision,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
@@ -5246,12 +5507,14 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     };
   }
 
-  function buildSkeleton(settings, people) {
+  function buildSkeleton(settings, people, startDay) {
     const daily = N().householdTargets(people);
     const targets = slotTargets(people);
     // Порядок приёмов пищи — как в течение дня, а не как пришлось в объекте.
     const slots = Object.keys(window.App.MEALS).filter(s => targets[s]);
-    const start = new Date((settings.startDay || S().today()) + 'T00:00:00');
+    // Дата начала может прийти извне: месячный календарь собирает несколько
+    // недель подряд, и каждой нужна своя, а не одна из настроек.
+    const start = new Date((startDay || settings.startDay || S().today()) + 'T00:00:00');
 
     const days = [];
     for (let d = 0; d < 7; d++) {
@@ -5340,7 +5603,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     // сдвигается к дешёвым калориям. Включается только жёсткой подгонкой.
     ctx.costFocus = !!(opts && opts.costFocus);
 
-    const plan = buildSkeleton(settings, state.people);
+    const plan = buildSkeleton(settings, state.people, opts && opts.startDay);
 
     plan.days.forEach(function (day, di) {
       day.meals.forEach(function (meal) {
@@ -6148,6 +6411,77 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     overspendAdvice, applyProductSwap,
     upgradeSuggestions, recipeCost, unitCost, allMeals,
     DAY_NAMES: DAY_NAMES
+  };
+})();
+
+/* ===== js/ui/layout.js ===== */
+/* Выбор расположения экранов.
+ *
+ * Два разных взгляда на одни и те же данные, а не тема оформления:
+ *
+ *   «Вкладки»   — обзор, неделя, список, кладовая, цены, отчёты. Всё разложено
+ *                 по полкам, видно цифры и как они получились.
+ *   «Календарь» — месячная сетка, кружочки едоков, день открывается по нажатию.
+ *                 Видно, что и когда есть и когда идти в магазин.
+ *
+ * Выбор хранится НА УСТРОЙСТВЕ, а не в общих данных хозяйства, и это
+ * принципиально. Двое в одном хозяйстве делят бюджет, кладовую и цены —
+ * но не привычки. Попади эта настройка в общее состояние, она бы
+ * синхронизировалась: он переключил у себя, а перещёлкнуло и у неё,
+ * посреди магазина. Расположение экранов — свойство человека и его телефона,
+ * а не свойство хозяйства.
+ */
+(function () {
+  'use strict';
+
+  const KEY = 'spendings.layout';
+
+  const LAYOUTS = {
+    tabs: {
+      id: 'tabs',
+      n: 'Вкладки',
+      short: 'Всё по полкам: обзор, неделя, список, цены, отчёты',
+      why: 'Видно цифры и то, как они получились. Больше управления, больше экранов.',
+      order: ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings', 'account'],
+      home: 'dashboard'
+    },
+    calendar: {
+      id: 'calendar',
+      n: 'Календарь',
+      short: 'Месяц на одном экране, едоки кружочками, день открывается нажатием',
+      why: 'Видно, что и когда есть и когда идти в магазин. Меньше цифр, больше картины.',
+      order: ['calendar', 'list', 'pantry', 'prices', 'settings', 'account'],
+      home: 'calendar'
+    }
+  };
+
+  let current = null;
+
+  function get() {
+    if (current) return current;
+    let saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) { /* без хранилища — по умолчанию */ }
+    current = LAYOUTS[saved] ? saved : 'tabs';
+    return current;
+  }
+
+  function set(id) {
+    if (!LAYOUTS[id]) return get();
+    current = id;
+    try { localStorage.setItem(KEY, id); } catch (e) { /* переживёт до перезагрузки */ }
+    return current;
+  }
+
+  function def() { return LAYOUTS[get()]; }
+
+  window.App = window.App || {};
+  window.App.layout = {
+    LAYOUTS: LAYOUTS,
+    get: get,
+    set: set,
+    current: def,
+    order: () => def().order,
+    home: () => def().home
   };
 })();
 
@@ -6997,6 +7331,364 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     lineChart, groupedBars, rankedBars, statTile, emptyFigure,
     seriesColor, fmtInt, fmtDate, niceScale
   };
+})();
+
+/* ===== js/ui/view-calendar.js ===== */
+/* Календарь: месяц на одном экране.
+ *
+ * Месяц здесь — это витрина, а не единица планирования. Считает по-прежнему
+ * недельный движок: закупка, кладовая и подгонка под бюджет живут неделей,
+ * и это свойство задачи, а не ограничение кода. Месяц склеивается из недель,
+ * каждая собрана тем же проверенным путём.
+ *
+ * Отсюда важное следствие для дней закупок: они не выдуманы для красоты.
+ * День закупки — это понедельник недели, потому что именно на неделю
+ * считается список покупок, и сумма на нём — настоящая стоимость этого списка.
+ */
+(function () {
+  'use strict';
+
+  const U = () => window.App.ui;
+  const S = () => window.App.store;
+  const P = () => window.App.planner;
+
+  const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+  const MONTHS_NOM = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+  // Приёмы пищи узнаются в сетке по значку — подписи туда не влезают.
+  const MEAL_ICONS = { breakfast: '☕', lunch: '🍲', dinner: '🍽', snack: '🍎' };
+
+  // Какой месяц показан и чей взгляд выбран. Живут между перерисовками,
+  // но не сохраняются: это положение взгляда, а не данные.
+  let shownMonth = null;          // первое число показываемого месяца
+  let whoseView = 'all';          // 'all' или id профиля
+  let openDay = null;             // раскрытый день
+
+  function monthStart(date) {
+    const d = new Date(date);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+
+  function shiftMonth(delta) {
+    const d = shownMonth || monthStart(new Date());
+    shownMonth = new Date(d.getFullYear(), d.getMonth() + delta, 1);
+    openDay = null;
+    U().refresh();
+  }
+
+  function render() {
+    const u = U(), h = u.h;
+    if (!shownMonth) shownMonth = monthStart(new Date());
+
+    return h('div.view.cal-view', {}, [
+      eatersRow(),
+      monthCard(),
+      openDay ? dayCard(openDay) : hintCard()
+    ]);
+  }
+
+  // ---------------------------------------------------------------- едоки
+
+  /* Кружочки едоков. Переключают не меню, а взгляд на него: готовится одна
+     кастрюля, но порция и КБЖУ у каждого свои, и увидеть их по отдельности
+     полезнее, чем общую цифру на всех. */
+  function eatersRow() {
+    const u = U(), h = u.h;
+    const people = S().get().people || [];
+
+    function circle(id, label, title) {
+      const active = whoseView === id;
+      return h('button.eater' + (active ? '.active' : ''), {
+        type: 'button',
+        title: title,
+        'aria-pressed': active ? 'true' : 'false',
+        onclick: function () { whoseView = id; u.refresh(); }
+      }, [
+        h('span.eater-face', { text: label }),
+        h('span.eater-name', { text: title })
+      ]);
+    }
+
+    return h('div.eaters', {}, [
+      circle('all', '👥', 'Все'),
+      ...people.map(p => circle(p.id, initials(p.name), p.name))
+    ]);
+  }
+
+  function initials(name) {
+    const clean = String(name || '?').trim();
+    return clean ? clean[0].toUpperCase() : '?';
+  }
+
+  // ---------------------------------------------------------------- месяц
+
+  function monthCard() {
+    const u = U(), h = u.h;
+    const first = shownMonth;
+    const title = MONTHS_NOM[first.getMonth()] + ' ' + first.getFullYear();
+
+    return u.card(null, [
+      h('div.cal-head', {}, [
+        u.button('‹', () => shiftMonth(-1), 'ghost small'),
+        h('h2.cal-title', { text: title }),
+        u.button('›', () => shiftMonth(1), 'ghost small')
+      ]),
+      h('div.cal-grid', {}, [
+        ...WEEKDAYS.map(d => h('div.cal-wd', { text: d })),
+        ...cells(first)
+      ]),
+      legend(),
+      weekActions(first)
+    ], 'cal-card');
+  }
+
+  /* Сетка месяца всегда начинается с понедельника: иначе числа скачут
+     по столбцам и календарь перестаёт читаться с одного взгляда. */
+  function cells(first) {
+    const out = [];
+    const lead = (first.getDay() + 6) % 7;
+    const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const today = S().today();
+
+    for (let i = 0; i < lead; i++) out.push(U().h('div.cal-cell.empty'));
+
+    for (let n = 1; n <= daysInMonth; n++) {
+      const date = new Date(first.getFullYear(), first.getMonth(), n);
+      out.push(cell(S().localDate(date), n, S().localDate(date) === today));
+    }
+    return out;
+  }
+
+  function cell(dateStr, num, isToday) {
+    const u = U(), h = u.h;
+    const found = S().dayAt(dateStr);
+    const isShopDay = S().weekStart(dateStr) === dateStr;
+    const week = found ? found.plan : S().weekAt(S().weekStart(dateStr));
+
+    const classes = ['cal-cell'];
+    if (isToday) classes.push('today');
+    if (openDay === dateStr) classes.push('open');
+    if (!found) classes.push('blank');
+    if (isShopDay && week) classes.push('shop');
+
+    const kids = [h('span.cal-num', { text: String(num) })];
+
+    if (isShopDay && week) {
+      // Сумма на дне закупки — стоимость списка именно этой недели,
+      // а не доля от месяца: в магазин идут с ней.
+      kids.push(h('span.cal-shop', { text: u.money(week.cost || 0) }));
+    }
+
+    if (found) {
+      const meals = found.day.meals.filter(m => m.recipe);
+      kids.push(h('span.cal-meals', {},
+        meals.map(m => h('span.cal-meal', { title: m.recipe.n, text: MEAL_ICONS[m.slot] || '•' }))));
+      kids.push(h('span.cal-kcal', { text: dayKcal(found) + ' ккал' }));
+    }
+
+    return h('button.' + classes.join('.'), {
+      type: 'button',
+      onclick: function () {
+        openDay = (openDay === dateStr) ? null : dateStr;
+        U().refresh();
+      }
+    }, kids);
+  }
+
+  /* Калории дня — либо на всех, либо на выбранного едока. Личная доля берётся
+     из раскладки приёма пищи по людям, а не делением поровну: нормы разные. */
+  function dayKcal(found) {
+    if (whoseView === 'all') return Math.round((found.day.nutrition || {}).kcal || 0);
+    let sum = 0;
+    found.day.meals.forEach(function (meal) {
+      if (!meal.recipe) return;
+      const portions = P().mealPortions(found.plan, meal);
+      const mine = portions.find(x => x.name === personName(whoseView));
+      if (mine) sum += mine.kcal;
+    });
+    return Math.round(sum);
+  }
+
+  function personName(id) {
+    const p = (S().get().people || []).find(x => x.id === id);
+    return p ? p.name : '';
+  }
+
+  function legend() {
+    const u = U(), h = u.h;
+    return h('div.cal-legend', {}, [
+      h('span', {}, [h('i.dot.shop'), 'день закупки и сумма на неё']),
+      h('span', {}, [h('i.dot.today'), 'сегодня']),
+      h('span', {}, [h('i.dot.blank'), 'неделя ещё не собрана'])
+    ]);
+  }
+
+  /* Собрать недостающие недели показанного месяца.
+     Каждая считается тем же движком, поэтому кнопка честно предупреждает,
+     сколько их и что это займёт время. */
+  function weekActions(first) {
+    const u = U(), h = u.h;
+    const missing = missingWeeks(first);
+    if (!missing.length) {
+      return h('p.hint', { text: 'Весь месяц собран. Нажмите на день, чтобы увидеть, что в нём.' });
+    }
+    return h('div.row-actions', {}, [
+      u.button('Собрать недели этого месяца (' + missing.length + ')', function () {
+        u.busy('Собираю ' + missing.length + ' нед. …', function () {
+          missing.forEach(function (startDate) {
+            const plan = P().generate({ startDay: startDate });
+            S().setWeek(startDate, plan);
+          });
+          u.refresh();
+          u.toast('Собрано недель: ' + missing.length);
+        });
+      }, 'primary'),
+      h('p.hint', { text: 'Каждая неделя считается отдельно — по своей закупке и своей кладовой. ' +
+        'Так работает движок, и это не упрощение: закупка живёт неделей.' })
+    ]);
+  }
+
+  /* Недели, которые задевают показанный месяц и ещё не собраны. */
+  function missingWeeks(first) {
+    const out = [];
+    const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+    let cursor = S().weekStart(S().localDate(first));
+    const edge = S().weekStart(S().localDate(last));
+    let guard = 0;
+    while (cursor <= edge && guard++ < 10) {
+      if (!S().weekAt(cursor)) out.push(cursor);
+      const next = new Date(cursor + 'T00:00:00');
+      next.setDate(next.getDate() + 7);
+      cursor = S().localDate(next);
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- день
+
+  function hintCard() {
+    const u = U(), h = u.h;
+    return u.card('Как это читать', [
+      h('p', { text: 'Каждая клетка — день. Значки под числом: что едят, по приёмам пищи. ' +
+        'Понедельник помечен как день закупки — на нём стоит сумма, с которой идти в магазин.' }),
+      h('p.hint', { text: 'Кружочки сверху переключают взгляд: нажмите на человека — ' +
+        'и калории будут показаны его, а не общие на всех.' })
+    ]);
+  }
+
+  function dayCard(dateStr) {
+    const u = U(), h = u.h;
+    const found = S().dayAt(dateStr);
+    const d = new Date(dateStr + 'T12:00:00');
+    const title = d.getDate() + ' ' + MONTHS[d.getMonth()] + ', ' + fullWeekday(d);
+
+    if (!found) {
+      return u.card(title, [
+        h('p', { text: 'Эта неделя ещё не собрана.' }),
+        h('div.row-actions', {}, u.button('Собрать эту неделю', function () {
+          const start = S().weekStart(dateStr);
+          u.busy('Собираю неделю…', function () {
+            S().setWeek(start, P().generate({ startDay: start }));
+            u.refresh();
+            u.toast('Неделя собрана');
+          });
+        }, 'primary'))
+      ]);
+    }
+
+    return u.card(title, [
+      ...found.day.meals.filter(m => m.recipe).map(m => mealRow(found.plan, m)),
+      dayFooter(found)
+    ], 'day-card');
+  }
+
+  function fullWeekday(d) {
+    const names = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+    return names[d.getDay()];
+  }
+
+  /* Блюдо в раскрытом дне.
+   *
+   * Состав спрятан под нажатие намеренно: в списке из четырёх приёмов пищи
+   * развёрнутые ингредиенты — это простыня, в которой не видно главного,
+   * то есть что вообще едят. КБЖУ же стоит сразу под названием, потому что
+   * ради него всё и затевалось. */
+  function mealRow(plan, meal) {
+    const u = U(), h = u.h;
+    const slotName = (window.App.MEALS[meal.slot] || {}).n || meal.slot;
+    const portions = P().mealPortions(plan, meal);
+    const shown = whoseView === 'all'
+      ? null
+      : portions.find(x => x.name === personName(whoseView));
+
+    const nut = shown || meal.nutrition || {};
+    const weight = shown ? shown.grams : totalWeight(plan, meal);
+
+    const body = h('div.meal-detail', { hidden: true }, [
+      h('p.hint', { text: 'Состав на всю кастрюлю:' }),
+      h('ul.plain', {}, meal.recipe.ing.map(function (i) {
+        const prod = S().productsById()[i.p];
+        if (!prod) return null;
+        return h('li', { text: prod.n + ' — ' + window.App.shopping.formatAmount(prod, i.g * meal.mult) });
+      })),
+      meal.recipe.st ? h('p.hint', { text: meal.recipe.st }) : null
+    ]);
+
+    return h('div.meal-row', {}, [
+      h('button.meal-head', {
+        type: 'button',
+        onclick: function () { body.hidden = !body.hidden; }
+      }, [
+        h('span.meal-slot', { text: MEAL_ICONS[meal.slot] || '•' }),
+        h('span.meal-main', {}, [
+          h('span.meal-name', { text: meal.recipe.n }),
+          h('span.meal-nut', {
+            text: Math.round(nut.kcal || 0) + ' ккал · Б ' + Math.round(nut.p || 0) +
+              ' · Ж ' + Math.round(nut.f || 0) + ' · У ' + Math.round(nut.c || 0) +
+              (weight ? ' · ~' + Math.round(weight) + ' г' : '')
+          }),
+          h('span.meal-who', { text: shown ? shown.name : slotName + ' · на всех' })
+        ]),
+        // Кто это ест — видно кружочками, как в сетке.
+        h('span.meal-eaters', {}, portions.map(p2 =>
+          h('span.eater-mini' + (shown && p2.name === shown.name ? '.on' : ''), {
+            title: p2.name, text: initials(p2.name)
+          })))
+      ]),
+      body
+    ]);
+  }
+
+  function totalWeight(plan, meal) {
+    const byId = S().productsById();
+    return meal.recipe.ing.reduce(function (sum, i) {
+      const p = byId[i.p];
+      return p ? sum + i.g * meal.mult * (1 - (p.wst || 0)) : sum;
+    }, 0);
+  }
+
+  function dayFooter(found) {
+    const u = U(), h = u.h;
+    const cost = P().dayCost(found.plan, found.day);
+    const isShopDay = S().weekStart(found.day.date) === found.day.date;
+
+    return h('div.day-foot', {}, [
+      h('p.hint', { text: 'Еда этого дня обходится примерно в ' + u.money(cost) +
+        '. Это доля от закупки на неделю, а не отдельный поход в магазин.' }),
+      isShopDay
+        ? h('div.row-actions', {}, u.button('Список покупок на эту неделю', function () {
+            u.go('list');
+          }, 'primary'))
+        : null
+    ]);
+  }
+
+  window.App = window.App || {};
+  window.App.views = window.App.views || {};
+  window.App.views.calendar = { title: 'Календарь', render: render };
 })();
 
 /* ===== js/ui/view-dashboard.js ===== */
@@ -8653,12 +9345,48 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
   function render() {
     const u = U(), h = u.h;
     return h('div.view', {}, [
+      layoutCard(),
       budgetCard(),
       peopleCard(),
       modeCard(),
       regularsCard(),
       historyCard(),
       dataCard()
+    ]);
+  }
+
+  /* Выбор расположения экранов.
+   *
+   * Настройка живёт на устройстве, а не в общих данных, и об этом сказано
+   * прямо: иначе в общем хозяйстве переключение у одного перещёлкивало бы
+   * экраны у другого — посреди магазина, без объяснений. */
+  function layoutCard() {
+    const u = U(), h = u.h;
+    const L = window.App.layout;
+    const now = L.get();
+
+    return u.card('Расположение экранов', [
+      h('p.hint', { text: 'Два взгляда на одни и те же данные. Меню, бюджет и цены общие — ' +
+        'меняется только то, как они разложены по экрану.' }),
+      h('div.layout-pick', {}, Object.keys(L.LAYOUTS).map(function (id) {
+        const def = L.LAYOUTS[id];
+        const active = id === now;
+        return h('button.layout-option' + (active ? '.active' : ''), {
+          type: 'button',
+          'aria-pressed': active ? 'true' : 'false',
+          onclick: function () {
+            if (active) return;
+            window.App.ui.setLayout(id);
+            u.toast('Расположение: ' + def.n);
+          }
+        }, [
+          h('span.layout-name', { text: def.n + (active ? '  ✓' : '') }),
+          h('span.layout-short', { text: def.short }),
+          h('span.layout-why', { text: def.why })
+        ]);
+      })),
+      h('p.hint', { text: 'Выбор запоминается на этом устройстве и не переносится на другие. ' +
+        'В общем хозяйстве у каждого он свой: переключив здесь, вы не тронете чужой экран.' })
     ]);
   }
 
@@ -9426,9 +10154,16 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 
   /* Показывается в подвале. Если после обновления цифра не изменилась —
      браузер отдал страницу из кеша, и правок вы не увидите. */
-  const APP_VERSION = '1.8';
+  const APP_VERSION = '1.9';
 
-  const ORDER = ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings', 'account'];
+  // Набор и порядок вкладок задаёт выбранное расположение экранов:
+  // «Вкладки» и «Календарь» — это два разных взгляда на одни данные.
+  function order() {
+    return window.App.layout ? window.App.layout.order() : ['dashboard', 'week', 'list', 'pantry', 'prices', 'reports', 'settings'];
+  }
+  function home() {
+    return window.App.layout ? window.App.layout.home() : 'dashboard';
+  }
   let current = 'dashboard';
 
   /* Пока человек не вошёл и не согласился смотреть гостем, всё приложение —
@@ -9441,7 +10176,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 
   function go(name) {
     if (locked()) name = 'account';
-    current = window.App.views[name] ? name : 'dashboard';
+    current = window.App.views[name] ? name : home();
     location.hash = current;
     refresh();
     window.scrollTo(0, 0);
@@ -9449,6 +10184,10 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 
   function refresh() {
     if (locked()) current = 'account';
+    // Экран мог остаться от прежнего расположения, где его больше нет.
+    if (!window.App.views[current] || order().indexOf(current) === -1) {
+      if (!locked()) current = home();
+    }
     const view = window.App.views[current];
     const root = document.getElementById('view');
     root.innerHTML = '';
@@ -9472,7 +10211,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     // На экране входа вкладок нет: показывать их значило бы предлагать
     // заглянуть в данные, которых человеку ещё не полагается видеть.
     if (locked()) return;
-    ORDER.forEach(function (name) {
+    order().forEach(function (name) {
       const view = window.App.views[name];
       if (!view) return;
       // Вкладка аккаунта появляется, только если облако вообще настроено.
@@ -9643,9 +10382,13 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
     window.App.ui.go = go;
     window.App.ui.refresh = refresh;
     window.App.ui.generate = generate;
+    window.App.ui.setLayout = function (id) {
+      window.App.layout.set(id);
+      go(window.App.layout.home());
+    };
 
     const fromHash = location.hash.replace('#', '');
-    current = window.App.views[fromHash] ? fromHash : 'dashboard';
+    current = window.App.views[fromHash] ? fromHash : home();
     if (locked()) current = 'account';
 
     refresh();

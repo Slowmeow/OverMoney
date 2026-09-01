@@ -9,12 +9,48 @@
   function render() {
     const u = U(), h = u.h;
     return h('div.view', {}, [
+      layoutCard(),
       budgetCard(),
       peopleCard(),
       modeCard(),
       regularsCard(),
       historyCard(),
       dataCard()
+    ]);
+  }
+
+  /* Выбор расположения экранов.
+   *
+   * Настройка живёт на устройстве, а не в общих данных, и об этом сказано
+   * прямо: иначе в общем хозяйстве переключение у одного перещёлкивало бы
+   * экраны у другого — посреди магазина, без объяснений. */
+  function layoutCard() {
+    const u = U(), h = u.h;
+    const L = window.App.layout;
+    const now = L.get();
+
+    return u.card('Расположение экранов', [
+      h('p.hint', { text: 'Два взгляда на одни и те же данные. Меню, бюджет и цены общие — ' +
+        'меняется только то, как они разложены по экрану.' }),
+      h('div.layout-pick', {}, Object.keys(L.LAYOUTS).map(function (id) {
+        const def = L.LAYOUTS[id];
+        const active = id === now;
+        return h('button.layout-option' + (active ? '.active' : ''), {
+          type: 'button',
+          'aria-pressed': active ? 'true' : 'false',
+          onclick: function () {
+            if (active) return;
+            window.App.ui.setLayout(id);
+            u.toast('Расположение: ' + def.n);
+          }
+        }, [
+          h('span.layout-name', { text: def.n + (active ? '  ✓' : '') }),
+          h('span.layout-short', { text: def.short }),
+          h('span.layout-why', { text: def.why })
+        ]);
+      })),
+      h('p.hint', { text: 'Выбор запоминается на этом устройстве и не переносится на другие. ' +
+        'В общем хозяйстве у каждого он свой: переключив здесь, вы не тронете чужой экран.' })
     ]);
   }
 

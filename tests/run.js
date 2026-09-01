@@ -346,6 +346,50 @@ ok('компромисс обратим', !!hardPlan.beforeHardFit);
 planner.undoHardFit(hardPlan);
 ok('откат возвращает исходный план', hardPlan.cost === before, hardPlan.cost + ' ₽');
 
+// ───────────────────────────────────────────────── недели в месяце
+
+/* Месячный календарь склеен из недельных планов, и вся склейка держится
+   на одной функции — «какой неделе принадлежит эта дата». Ошибись она
+   на день, и собранная неделя не совпадёт ни с одной клеткой календаря:
+   месяц будет выглядеть пустым при полностью готовом плане. Ровно это
+   и случилось при первой сборке, когда недели считались от понедельника,
+   а план начинался со дня из настроек. */
+section('Недели в месяце');
+
+store.get().settings.startDay = '2026-09-02';   // среда: намеренно не понедельник
+store.persist();
+const weekPlan = withSeed(3, () => planner.generate());
+store.get().plan = weekPlan;
+store.persist();
+
+const wStart = store.planStart(weekPlan);
+ok('неделя начинается с заданного дня', wStart === '2026-09-02', wStart);
+ok('свой день недели указывает на себя', store.weekStart(wStart) === wStart);
+ok('середина недели указывает на её начало', store.weekStart('2026-09-05') === wStart, store.weekStart('2026-09-05'));
+ok('последний день недели ещё её', store.weekStart('2026-09-08') === wStart, store.weekStart('2026-09-08'));
+ok('следующий день — уже другая неделя', store.weekStart('2026-09-09') === '2026-09-09', store.weekStart('2026-09-09'));
+// Отрицательная разница дат — место, где усечение к нулю вместо округления
+// вниз сдвигает все прошлые недели на одну вперёд.
+ok('прошлая неделя считается назад верно', store.weekStart('2026-08-30') === '2026-08-26', store.weekStart('2026-08-30'));
+ok('ровно неделю назад', store.weekStart('2026-08-26') === '2026-08-26', store.weekStart('2026-08-26'));
+
+const foundDay = store.dayAt('2026-09-04');
+ok('день месяца находит своё меню', !!foundDay && foundDay.day.date === '2026-09-04',
+  foundDay ? foundDay.day.meals.filter(m => m.recipe).length + ' блюд' : 'не найден');
+ok('день вне собранных недель не находится', store.dayAt('2026-10-15') === null);
+
+const nextStart = '2026-09-09';
+store.setWeek(nextStart, withSeed(4, () => planner.generate({ startDay: nextStart })));
+ok('вторая неделя встала рядом с первой', !!store.weekAt(nextStart),
+  Object.keys(store.allWeeks()).length + ' недели в календаре');
+ok('первая неделя не пострадала', store.weekAt(wStart) === weekPlan);
+ok('день второй недели находится', !!store.dayAt('2026-09-11'));
+ok('текущий план остался тем же объектом', store.plan() === weekPlan);
+
+const dropped = store.pruneWeeks('2026-09-05');
+ok('старые недели вычищаются', dropped === 0 || Object.keys(store.get().weeks).every(k => k >= '2026-09-05'),
+  'убрано ' + dropped);
+
 // ───────────────────────────────────────────────── настройки облака
 
 /* Расхождение между адресом проекта и правилами загрузки ломает вход молча:

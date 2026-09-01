@@ -3,7 +3,7 @@
 /* Номер меняется при каждом обновлении файлов: при активации нового
    service worker старый кеш целиком удаляется, поэтому в браузере
    не может остаться половина старой версии приложения. */
-const CACHE = 'spendings-v16';
+const CACHE = 'spendings-v17';
 
 /* Сколько ждём сеть, прежде чем отдать страницу из кеша.
  *
@@ -36,8 +36,10 @@ const ASSETS = [
   'js/core/receipt.js',
   'js/core/shopping.js',
   'js/core/planner.js',
+  'js/ui/layout.js',
   'js/ui/helpers.js',
   'js/ui/charts.js',
+  'js/ui/view-calendar.js',
   'js/ui/view-dashboard.js',
   'js/ui/view-week.js',
   'js/ui/view-list.js',

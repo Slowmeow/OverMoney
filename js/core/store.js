@@ -93,7 +93,11 @@
       customProducts: [],
       customRecipes: [],
       disabledRecipes: {},
-      plan: null,
+      plan: null,          // текущая неделя
+      weeks: {},           // прочие недели: { 'ГГГГ-ММ-ДД начала': план } — для месячного календаря
+      // Когда продукт попал в кладовую. Нужно, чтобы считать срок годности:
+      // у каждого продукта в каталоге есть поле life, а точки отсчёта не было.
+      pantryDates: {},     // { productId: 'ГГГГ-ММ-ДД' }
       listState: {},       // отметки «куплено» в списке покупок
       history: []
     };
@@ -273,6 +277,15 @@
       .filter(r => Array.isArray(r.ing) && Array.isArray(r.m));
     merged.disabledRecipes = asObject(saved.disabledRecipes, {});
     merged.listState = asObject(saved.listState, {});
+    merged.pantryDates = asObject(saved.pantryDates, {});
+    // Каждая неделя проверяется тем же разбором, что и текущий план:
+    // битая неделя из месяца не должна валить календарь целиком.
+    merged.weeks = {};
+    const savedWeeks = asObject(saved.weeks, {});
+    Object.keys(savedWeeks).forEach(function (k) {
+      const p = sanePlan(asObject(savedWeeks[k], null));
+      if (p) merged.weeks[k] = p;
+    });
     merged.history = asRecords(saved.history, []);
     merged.plan = sanePlan(asObject(saved.plan, null));
 
@@ -389,6 +402,98 @@
    * Внешне это выглядит так, будто кнопка не работает. */
   function plan() {
     return get().plan;
+  }
+
+  // ---------- НЕСКОЛЬКО НЕДЕЛЬ ----------
+
+  /* Месячный календарь показывает то, что движок считает недельными планами.
+   *
+   * Планировщик умеет ровно семь дней, и это не ограничение, а свойство задачи:
+   * закупка, кладовая и подгонка под бюджет живут неделей. Поэтому месяц
+   * не пересчитывается заново, а склеивается из недель — каждая собрана тем же
+   * проверенным кодом.
+   *
+   * Текущая неделя по-прежнему лежит в state.plan и ничем не отличается
+   * от прежней: весь старый код работает с ней, не подозревая об остальных.
+   * Прочие недели живут в state.weeks. Хранить текущую ещё и там значило бы
+   * держать две её копии, которые после сохранения и загрузки перестанут быть
+   * одним объектом и разойдутся при первой же правке. */
+  /* Начало недели, которой принадлежит эта дата.
+   *
+   * Отсчёт идёт не от понедельника, а от дня, с которого начат текущий план.
+   * Это не педантизм: человек начинает неделю тогда, когда ходит в магазин,
+   * и если план собран со среды, то его недели — среда-вторник. Привяжись
+   * расчёт к понедельнику, собранный план не совпал бы ни с одной клеткой
+   * календаря, и месяц выглядел бы пустым при полностью готовой неделе.
+   * Ровно так и получилось при первой сборке. */
+  function planStart(p) {
+    return p && p.days && p.days[0] ? p.days[0].date : null;
+  }
+
+  function weekAnchor() {
+    const s = get();
+    return planStart(s.plan) || s.settings.startDay || today();
+  }
+
+  function weekStart(dateStr) {
+    const anchor = new Date(weekAnchor() + 'T00:00:00');
+    const d = new Date((dateStr || today()) + 'T00:00:00');
+    const days = Math.floor((d - anchor) / 86400000);
+    // Math.floor, а не деление с усечением: до якоря разница отрицательная,
+    // и усечение к нулю сдвинуло бы прошлые недели на одну вперёд.
+    const shift = Math.floor(days / 7) * 7;
+    anchor.setDate(anchor.getDate() + shift);
+    return localDate(anchor);
+  }
+
+  /* План недели, начинающейся в этот день. Текущая неделя отдаётся из state.plan,
+     чтобы календарь и вкладки правили один и тот же объект, а не две копии. */
+  function weekAt(startDate) {
+    const s = get();
+    if (planStart(s.plan) === startDate) return s.plan;
+    return (s.weeks && s.weeks[startDate]) || null;
+  }
+
+  function setWeek(startDate, p) {
+    const s = get();
+    if (planStart(s.plan) === startDate) { s.plan = p; save(); return p; }
+    s.weeks = s.weeks || {};
+    s.weeks[startDate] = p;
+    save();
+    return p;
+  }
+
+  /* Все известные недели разом — для месячной сетки. */
+  function allWeeks() {
+    const s = get();
+    const out = {};
+    Object.keys(s.weeks || {}).forEach(k => { out[k] = s.weeks[k]; });
+    const cur = planStart(s.plan);
+    if (cur) out[cur] = s.plan;
+    return out;
+  }
+
+  /* День месяца → что в этот день едят. Возвращает и сам день, и неделю,
+     которой он принадлежит: без недели нельзя посчитать ни стоимость,
+     ни порции — они считаются по всему плану целиком. */
+  function dayAt(dateStr) {
+    const p = weekAt(weekStart(dateStr));
+    if (!p) return null;
+    const day = p.days.find(d => d.date === dateStr);
+    return day ? { day: day, plan: p } : null;
+  }
+
+  /* Забыть недели, которые давно прошли: они не нужны ни в календаре,
+     ни в отчётах, а место в хранилище занимают заметное. */
+  function pruneWeeks(keepFromDate) {
+    const s = get();
+    if (!s.weeks) return 0;
+    const edge = keepFromDate || weekStart(localDate(new Date(Date.now() - 60 * 86400000)));
+    let dropped = 0;
+    Object.keys(s.weeks).forEach(function (k) {
+      if (k < edge) { delete s.weeks[k]; dropped++; }
+    });
+    return dropped;
   }
 
   /* Приём пищи по дню и типу. Ссылку на сам приём хранить нельзя
@@ -716,6 +821,7 @@
   window.App = window.App || {};
   window.App.store = {
     load, save, get, reset, today, localDate, adopt, persist, plan, mealAt, storageAvailable,
+    weekStart, weekAt, setWeek, allWeeks, dayAt, pruneWeeks, planStart,
     revision: () => revision,
     products, productsById, pricePerBase, isStale, daysSince, setPrice,
     recordPrice, priceHistory, brandsOf, effectivePrice, invalidate,
