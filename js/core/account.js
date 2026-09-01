@@ -24,6 +24,10 @@
   const PUSH_DELAY = 900;        // мс тишины перед отправкой
 
   let household = null;          // { id, name, invite_code, rev }
+  // Хозяйство, из которого человек уходит, вступая в чужое. Держится отдельно,
+  // потому что между «посмотреть, что изменится» и «согласен» он уже числится
+  // в обоих, и без этой пометки некуда было бы возвращаться при отказе.
+  let leavingBehind = null;
   let pushTimer = null;
   let pending = false;
   let busy = false;
@@ -139,7 +143,9 @@
   function afterSignIn() {
     return CLOUD().myHouseholds().then(function (rows) {
       if (rows.length) {
-        rememberHousehold(rows[0]);
+        // Последнее по времени вступления, а не первое: если человек когда-то
+        // объединялся, свежее членство и есть его нынешнее хозяйство.
+        rememberHousehold(rows[rows.length - 1]);
         return pull({ adoptRemote: true });
       }
       // Хозяйства нет — заводим, и семенем кладём то, что человек уже наработал.
@@ -275,6 +281,8 @@
    * своего — и это правильно, а не особый случай. */
   function joinByCode(code) {
     const mine = JSON.parse(JSON.stringify(STORE().get()));
+    const previous = leavingBehind || household;
+
     return CLOUD().joinHousehold(code).then(function (row) {
       rememberHousehold(row);
       const merged = window.App.merge.mergeStates(row.state, mine);
@@ -282,7 +290,23 @@
         const saved = res.row || row;
         rememberHousehold(saved);
         STORE().adopt(merged, { silent: true });
-        return { household: saved, merged: merged };
+
+        /* Выписаться из прежнего хозяйства обязательно, и это не уборка.
+         *
+         * Оставшись в обоих, человек при следующем входе попадает в то,
+         * куда его определит порядок в списке, — то есть, скорее всего,
+         * в старое и пустое, с бюджетом до объединения. Данные при этом
+         * целы, но человек видит не свои и решает, что всё пропало.
+         * Второй раз это же вылезает при выходе из общего хозяйства:
+         * выходит он не оттуда, откуда думает.
+         *
+         * Неудача здесь не должна рушить уже состоявшееся объединение —
+         * оно важнее, а лишнее членство поправимо. */
+        leavingBehind = null;
+        if (!previous || previous.id === saved.id) return { household: saved, merged: merged };
+        return CLOUD().leaveHousehold(previous.id)
+          .catch(() => {})
+          .then(() => ({ household: saved, merged: merged }));
       });
     });
   }
@@ -290,16 +314,30 @@
   /* Что изменится при вступлении — до того, как человек согласится. */
   function previewJoin(code) {
     const mine = STORE().get();
+    const previous = household;
     return CLOUD().joinHousehold(code).then(function (row) {
       // Вступление уже произошло: узнать состав чужого хозяйства иначе нельзя,
       // правила доступа не дают читать то, где ты не состоишь. Выйти обратно
       // можно одной кнопкой, поэтому цена ошибки здесь невелика.
+      if (previous && previous.id !== row.id) leavingBehind = previous;
       rememberHousehold(row);
       return {
         household: row,
         changes: window.App.merge.describeMerge(row.state, mine),
         hasState: !!row.state
       };
+    });
+  }
+
+  /* Передумал на полпути: выходим из чужого хозяйства и возвращаемся в своё. */
+  function cancelJoin() {
+    const back = leavingBehind;
+    const joined = household;
+    leavingBehind = null;
+    if (!joined || (back && joined.id === back.id)) return Promise.resolve();
+    return CLOUD().leaveHousehold(joined.id).catch(() => {}).then(function () {
+      if (back) rememberHousehold(back);
+      return pull({ adoptRemote: true });
     });
   }
 
@@ -349,7 +387,7 @@
       if (!rows.length) return afterSignIn();
       // Держимся того хозяйства, в котором работали, если человек всё ещё в нём.
       const keep = household && rows.find(r => r.id === household.id);
-      rememberHousehold(keep || rows[0]);
+      rememberHousehold(keep || rows[rows.length - 1]);
       return pull({ adoptRemote: true });
     }).catch(function (err) {
       lastError = err.message;
@@ -362,7 +400,7 @@
     init, status, onChange, needsAuth,
     signIn, signUp, signOut, setGuest, isGuest,
     pull, push, schedulePush, flushNow, acceptRemote, forceOverwrite,
-    joinByCode, previewJoin, leave, rotateInvite, rename, people,
+    joinByCode, previewJoin, cancelJoin, leave, rotateInvite, rename, people,
     get household() { return household; }
   };
 })();
