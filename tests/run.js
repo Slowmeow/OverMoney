@@ -12,6 +12,8 @@
  * гоняется на фиксированных посевах: так расхождение видно как расхождение,
  * а не как «сегодня выпал другой набор блюд».
  */
+const fs = require('fs');
+const path = require('path');
 const { makeEnv, withSeed } = require('./harness.js');
 
 let passed = 0;
@@ -343,6 +345,36 @@ ok('белок не падает ниже безопасных 0,8 г на кг'
 ok('компромисс обратим', !!hardPlan.beforeHardFit);
 planner.undoHardFit(hardPlan);
 ok('откат возвращает исходный план', hardPlan.cost === before, hardPlan.cost + ' ₽');
+
+// ───────────────────────────────────────────────── настройки облака
+
+/* Расхождение между адресом проекта и правилами загрузки ломает вход молча:
+   браузер запрещает запрос ещё до отправки, приложение видит обычную сетевую
+   ошибку и говорит «сервер не отвечает». Найти такое по симптому почти
+   невозможно, поэтому проверяется здесь. */
+section('Настройки облака');
+
+const cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'js', 'core', 'config.js'), 'utf8');
+const htmlSrc = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const cloudUrl = (cfgSrc.match(/supabaseUrl:\s*'([^']*)'/) || [])[1] || '';
+const cloudKey = (cfgSrc.match(/supabasePublishableKey:\s*'([^']*)'/) || [])[1] || '';
+const cspMeta = (htmlSrc.match(/http-equiv="Content-Security-Policy" content="([\s\S]+?)"/) || [])[1] || '';
+const connectSrc = ((cspMeta.match(/connect-src ([^;]+);/) || [])[1] || '').trim();
+
+if (!cloudUrl && !cloudKey) {
+  ok('облако не подключено — приложение работает локально', true, 'config.js пуст, это допустимо');
+} else {
+  ok('адрес проекта и ключ заданы оба', !!(cloudUrl && cloudKey),
+    cloudUrl ? 'адрес есть' : 'АДРЕСА НЕТ — аккаунты не включатся');
+  ok('ключ публикуемый, а не секретный',
+    /^(sb_publishable_|eyJ)/.test(cloudKey) && cloudKey.indexOf('sb_secret_') === -1,
+    cloudKey.slice(0, 16) + '…');
+  ok('адрес проекта разрешён правилами загрузки',
+    connectSrc.indexOf(cloudUrl) !== -1 || /\*\.supabase\.co/.test(connectSrc),
+    connectSrc);
+}
+ok('секретного ключа нет в настройках', cfgSrc.indexOf('sb_secret_') === cfgSrc.lastIndexOf('sb_secret_'),
+  'упоминается только в пояснении');
 
 // ───────────────────────────────────────────────── слияние хозяйств
 

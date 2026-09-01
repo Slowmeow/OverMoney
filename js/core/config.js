@@ -28,7 +28,7 @@
 
   const CONFIG = {
     // Project Settings → API → Project URL
-    supabaseUrl: '',
+    supabaseUrl: 'https://omznfiuifmrtvetzhqcp.supabase.co',
 
     // Project Settings → API Keys → публикуемый ключ.
     // Публичный по замыслу: см. пояснение выше.

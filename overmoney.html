@@ -26,11 +26,14 @@
     frame-ancestors здесь не указан намеренно: в meta он не работает, только
     в заголовке ответа, а заголовками GitHub Pages управлять не даёт.
 
-    Единственный внешний адрес в connect-src — supabase.co, туда уходит
-    синхронизация аккаунтов. Разрешение стоит звёздочкой, потому что адрес
-    проекта у каждого свой и в общем коде его нет. Если вы разворачиваете
-    приложение только для себя, замените звёздочку на адрес своего проекта
-    из js/core/config.js — станет ещё строже.
+    Единственный внешний адрес в connect-src — тот самый проект Supabase,
+    куда уходит синхронизация аккаунтов. Здесь стоит точный адрес, а не
+    звёздочка: со звёздочкой утекать данные было бы можно в любой проект
+    Supabase, какой заведёт себе злоумышленник, а с точным — некуда вовсе.
+
+    ЕСЛИ ВЫ РАЗВЕРНУЛИ ЭТО У СЕБЯ: адрес здесь и адрес в js/core/config.js
+    должны совпадать. Разойдутся — вход будет молча не работать, потому что
+    браузер запретит запрос ещё до отправки.
   -->
   <!--
     blob: в default-src — ради выгрузки резервной копии. Файл отдаётся ссылкой
@@ -46,7 +49,7 @@
     script-src 'self' 'unsafe-inline';
     style-src 'self' 'unsafe-inline';
     img-src 'self' data:;
-    connect-src 'self' https://*.supabase.co;
+    connect-src 'self' https://omznfiuifmrtvetzhqcp.supabase.co;
     manifest-src 'self' data:;
     worker-src 'self';
     object-src 'none';
@@ -1295,7 +1298,7 @@ p, .hint, .field-hint, .meal-meta, .item-meta { text-wrap: pretty; }
 
   const CONFIG = {
     // Project Settings → API → Project URL
-    supabaseUrl: '',
+    supabaseUrl: 'https://omznfiuifmrtvetzhqcp.supabase.co',
 
     // Project Settings → API Keys → публикуемый ключ.
     // Публичный по замыслу: см. пояснение выше.
