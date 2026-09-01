@@ -114,7 +114,7 @@ console.log('\nВыполнение чужого кода через присл�
     settings: { budget: 15000 },
     customRecipes: [{
       id: 'evilr', n: XSS, m: ['lunch'], t: 10, sv: 2,
-      ing: [{ p: 'rice', g: 200 }], st: XSS, batch: false, mth: ['boil']
+      ing: [{ p: 'rice_round', g: 200 }], st: XSS, batch: false, mth: ['boil']
     }]
   }));
   w.App.store.get().plan = w.App.planner.generate();
@@ -128,7 +128,7 @@ console.log('\nВыполнение чужого кода через присл�
   w.App.store.importJson(JSON.stringify({
     settings: { budget: 15000 },
     stores: [XSS],
-    priceLog: [{ d: '2026-08-01', p: 'rice', brand: XSS, store: XSS, pr: 99, pack: 800 }]
+    priceLog: [{ d: '2026-08-01', p: 'rice_round', brand: XSS, store: XSS, pr: 99, pack: 800 }]
   }));
   renderAll(w);
   ok('скрипт в марке и магазине — они попадают в подписи графиков', pwned(w));

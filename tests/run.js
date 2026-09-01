@@ -503,8 +503,17 @@ ok('просроченное попадает в «съесть скоро»',
 ok('долгоиграющее не попадает', !store.expiringSoon(2).some(e => e.id === 'buckwheat'),
   'гречка со сроком ' + store.productsById().buckwheat.life + ' дн. не в списке');
 
-ok('без даты закладки срок не выдумывается', store.expiryOf('rice') === null,
-  'рис в кладовую не клали — приложение молчит, а не гадает');
+/* Продукт, который лежит в кладовой, но попал туда до появления дат закладки.
+   Раньше здесь стоял 'rice' — а такого кода в каталоге нет вовсе, и проверка
+   проходила не потому, что даты не было, а потому, что не было продукта.
+   Ошибка тихая и обидная: тест зелёный, а проверяет пустоту. */
+store.get().pantry.rice_round = 800;
+delete store.get().pantryDates.rice_round;
+store.persist();
+ok('без даты закладки срок не выдумывается', store.expiryOf('rice_round') === null,
+  'рис в кладовой есть, даты закладки нет — приложение молчит, а не гадает');
+ok('продукт для этой проверки существует в каталоге', !!store.productsById().rice_round,
+  store.productsById().rice_round.n);
 
 store.pantrySet('tvorog5', 0);
 ok('снятое с кладовой забывает и дату', store.expiryOf('tvorog5') === null);
@@ -706,10 +715,10 @@ const { mergeStates, describeMerge, sumPerPeriod } = App.merge;
 
 {
   const host = { settings: { budget: 1, period: 'week', weeksInMonth: 4.3 }, people: [],
-    priceLog: [{ d: '2026-08-01', p: 'rice', brand: 'Мистраль', store: 'Пятёрочка', pr: 99 }] };
+    priceLog: [{ d: '2026-08-01', p: 'rice_round', brand: 'Мистраль', store: 'Пятёрочка', pr: 99 }] };
   const guest = { settings: { budget: 1, period: 'week', weeksInMonth: 4.3 }, people: [],
     priceLog: [
-      { d: '2026-08-01', p: 'rice', brand: 'Мистраль', store: 'Пятёрочка', pr: 99 },   // тот же самый
+      { d: '2026-08-01', p: 'rice_round', brand: 'Мистраль', store: 'Пятёрочка', pr: 99 },   // тот же самый
       { d: '2026-08-02', p: 'oats', brand: '', store: 'Магнит', pr: 79 }
     ] };
   const m = mergeStates(host, guest);

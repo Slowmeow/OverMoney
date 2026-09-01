@@ -180,7 +180,7 @@ check('покупки', 'купленного хватает на все рец�
 
 section('4. Кладовая — сохранение количества');
 
-store.get().pantry = { rice: 3000, potato: 5000, buckwheat: 1500 };
+store.get().pantry = { rice_round: 3000, potato: 5000, buckwheat: 1500 };
 store.persist();
 const listP = shopping.buildList(plan);
 let conserveBad = 0;
